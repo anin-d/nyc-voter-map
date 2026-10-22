@@ -1,0 +1,14 @@
+{
+  "name": "nyc-voter-map",
+  "private": true,
+  "description": "Who votes and who lives in every NYC district: voter enrollment and Census data by election district, council, assembly, senate and congressional lines.",
+  "scripts": {
+    "test": "node tests/consistency.test.js && node tests/lookup.test.js",
+    "serve": "python3 -m http.server 8000 --directory site"
+  },
+  "devDependencies": {
+    "mapshaper": "0.6.121",
+    "topojson-client": "3.1.0"
+  },
+  "license": "MIT"
+}
