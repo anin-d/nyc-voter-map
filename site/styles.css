@@ -4,7 +4,7 @@
 :root{
   --bg:#f4f5f3; --panel:#ffffff; --fg:#1b1f24; --muted:#5d666f; --faint:#8b939b; --line:#e3e6e3; --soft:#f0f2f0; --hover:#e8ecea;
   --accent:#14625f; --accent-soft:#e1efed; --accent-fg:#ffffff; --water:#d7e2e5; --nodata:#dfe1dd; --sel:#111417;
-  --hi:#b5482a; --lo:#2f7a4d; --warn-bg:#fbf2e0; --warn-fg:#77480a;
+  --hi:#b5482a; --lo:#2f7a4d; --warn-bg:#fbf2e0; --warn-fg:#77480a; --hi-rgb:222,128,40; --lo-rgb:34,140,150;
   --ff:"Public Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
   --shadow:0 1px 2px rgba(20,30,30,.06),0 6px 24px rgba(20,30,30,.12);
@@ -14,11 +14,11 @@
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#121518; --panel:#1b1f23; --fg:#e8ebeb; --muted:#a3acb4; --faint:#7a848d; --line:#2f353a; --soft:#23282d; --hover:#2b3137;
   --accent:#55b8b0; --accent-soft:#1d3634; --accent-fg:#0b1414; --water:#1c252a; --nodata:#3a3f43; --sel:#ffffff;
-  --hi:#e4825f; --lo:#6cc293; --warn-bg:#3a2d14; --warn-fg:#f2c97a; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.45); color-scheme:dark}}
+  --hi:#e4825f; --lo:#6cc293; --hi-rgb:236,150,70; --lo-rgb:70,180,190; --warn-bg:#3a2d14; --warn-fg:#f2c97a; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.45); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#121518; --panel:#1b1f23; --fg:#e8ebeb; --muted:#a3acb4; --faint:#7a848d; --line:#2f353a; --soft:#23282d; --hover:#2b3137;
   --accent:#55b8b0; --accent-soft:#1d3634; --accent-fg:#0b1414; --water:#1c252a; --nodata:#3a3f43; --sel:#ffffff;
-  --hi:#e4825f; --lo:#6cc293; --warn-bg:#3a2d14; --warn-fg:#f2c97a; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.45); color-scheme:dark}
+  --hi:#e4825f; --lo:#6cc293; --hi-rgb:236,150,70; --lo-rgb:70,180,190; --warn-bg:#3a2d14; --warn-fg:#f2c97a; --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 28px rgba(0,0,0,.45); color-scheme:dark}
 
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -330,3 +330,41 @@ table.list td:nth-child(2){text-align:right;white-space:nowrap}
   .tip{display:none}
 }
 @media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* comparison table: shading against the city */
+.cmpkey{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;font-size:12px;color:var(--muted);margin-bottom:10px}
+.cmpkey span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:14px;height:12px;border-radius:3px;display:inline-block}
+.sw.hi{background:rgba(var(--hi-rgb),.4)}.sw.lo{background:rgba(var(--lo-rgb),.4)}
+td.ns{color:var(--muted)}
+.rsort,.hgo{all:unset;cursor:pointer;font-weight:600}
+.rsort:hover,.hgo:hover{color:var(--accent)}
+.rsort:focus-visible,.hgo:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#cmpBody{display:flex;flex-direction:column}
+#cmpBody .tablewrap{max-height:calc(min(88vh, 920px) - 210px);overflow:auto}
+
+/* legend rows light up their places on the map */
+.legend .lrow{all:unset;box-sizing:border-box;display:grid;grid-template-columns:26px minmax(0,1fr) auto;align-items:center;gap:8px;width:100%;padding:2px 6px;margin:0 -6px;border-radius:6px;cursor:pointer;font-size:12px;font-variant-numeric:tabular-nums;transition:background .12s}
+.legend .lrow:hover,.legend .lrow.here{background:var(--hover)}
+.legend .lrow[aria-pressed="true"]{background:var(--accent-soft)}
+.legend .lrow:focus-visible{outline:2px solid var(--accent)}
+.legend .lrow > i{height:12px;border-radius:3px;display:block}
+.legend .lrow small{color:var(--faint)}
+/* quiet footer: two disclosures side by side */
+.layer-foot{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:flex-start}
+.layer-foot details{flex:1 1 auto}
+.layer-foot details[open]{flex-basis:100%}
+.layer-foot summary::before{content:""}
+.layer-foot details[open] summary::before{content:""}
+.layer-foot summary{color:var(--muted);font-weight:600}
+.layer-foot summary:hover{color:var(--fg)}
+.toggle{display:flex;gap:8px;align-items:center;cursor:pointer}
+
+/* a select that sits in a row of chips */
+select.chipsel{appearance:none;-webkit-appearance:none;width:auto;height:auto;padding:4px 24px 4px 10px;max-width:190px;text-overflow:ellipsis;
+  background:var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b939b' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 9px center/9px 6px}
+select.chipsel.on{background-color:var(--fg);color:var(--panel);border-color:var(--fg)}
+select.chipsel option,select.chipsel optgroup{color:var(--fg);background:var(--panel)}
+select.chipsel{width:84px}
+select.chipsel.on{width:min(200px,100%)}
+@supports (field-sizing: content){select.chipsel,select.chipsel.on{field-sizing:content;width:auto;max-width:220px}}

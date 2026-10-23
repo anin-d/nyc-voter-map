@@ -47,11 +47,10 @@
         <div id="layerControls" class="grid1"></div>
         <div id="unavail" class="unavail" hidden></div>
         <div class="legend" id="legend" aria-label="Legend"></div>
-        <p class="caption" id="layerDesc"></p>
-        <p class="src" id="layerSrc"></p>
       </div>
       <div class="layer-foot">
-        <details id="mapExtras"><summary>Lines and poll sites</summary><div><div class="chips" id="lineToggles"></div></div></details>
+        <details id="aboutLayer"><summary>About this data</summary><div><p class="caption" id="layerDesc"></p><p class="src" id="layerSrc"></p><button type="button" class="link" id="resDl" hidden>Download these results</button></div></details>
+        <details id="mapExtras"><summary>Map layers</summary><div><div class="chips" id="lineToggles"></div></div></details>
       </div>
     </section>
 
@@ -70,6 +69,7 @@
 <dialog id="cmpDlg" class="dlg wide" aria-labelledby="cmpTitle">
   <div class="dlg-head">
     <h2 id="cmpTitle">Comparison</h2>
+    <input id="cmpFind" class="field" type="search" placeholder="Find a row" aria-label="Find a row" style="max-width:220px;margin-left:auto">
     <button class="x" type="button" data-close aria-label="Close">×</button>
   </div>
   <div class="dlg-body" id="cmpBody"></div>

@@ -484,13 +484,12 @@ function leadColor(lvl, id) {
 }
 function viewsFor(c) {
   if (!c) return [];
-  if (c.group) return c.party ? [['winm','Winning margin'], ['ballots','Ballots'], ['turnout','Turnout']] : [['lead','Who won'], ['share','Party share'], ['winm','Margin'], ['ballots','Ballots'], ['turnout','Turnout']];
+  if (c.group) return c.party ? [['winm','Margin'], ['turnout','Turnout']] : [['lead','Winner'], ['share','Party share'], ['turnout','Turnout']];
   const p = prep(c);
-  if (p.proposal) return [['lead','Yes or no'], ['share','Yes share'], ['ballots','Ballots']];
-  const v = [['lead','Who led'], ['share','Candidate']];
+  if (p.proposal) return [['lead','Yes or no'], ['share','Yes share']];
+  const v = [['lead','Winner'], ['share','Share']];
   if (p.cands.length > 1) v.push(['h2h','Head to head']);
-  v.push(['turnout','Turnout'], ['ballots','Ballots']);
-  if (c.rcv) v.push(['exhausted','Exhausted']);
+  v.push(['turnout','Turnout']);
   return v;
 }
 function candOptions(c) {
@@ -635,14 +634,18 @@ const isDark = () => { const t = document.documentElement.dataset.theme; return 
 function readTheme() { const cs = getComputedStyle(document.documentElement); for (const k of ['nodata','sel','accent','panel']) THEME[k] = cs.getPropertyValue('--' + k).trim(); THEME.dark = isDark(); THEME.edge = THEME.dark ? 'rgba(20,24,28,.6)' : 'rgba(255,255,255,.85)'; }
 readTheme();
 let breaks = [], cols = [], diverging = false;
-const COLORS = new Map(), VALUES = new Map(), FADED = new Set();
+const COLORS = new Map(), VALUES = new Map(), FADED = new Set(), BUCKET = new Map();
+let HL = null;   // places lit up from the legend: {key, ids:Set, pinned}
 let SORTED = [];
 function seqFrom(hex) { return [.1, .22, .36, .52, .68, .84, 1].map(t => mix(hex, t, '#ffffff')); }
 function paint() {
-  COLORS.clear(); VALUES.clear(); FADED.clear(); diverging = false;
+  COLORS.clear(); VALUES.clear(); FADED.clear(); BUCKET.clear(); HL = null; diverging = false;
   const lvl = state.level, m = state.metric, f = famOf(m), ids = fillIds();
   if (!available()) { for (const id of ids) COLORS.set(id, THEME.nodata); SORTED = []; breaks = []; cols = []; return; }
-  if (leadMode()) { for (const id of ids) COLORS.set(id, leadColor(lvl, id) || THEME.nodata); SORTED = []; return; }
+  if (leadMode()) {
+    for (const id of ids) { COLORS.set(id, leadColor(lvl, id) || THEME.nodata); const r = unitRes(lvl, id); BUCKET.set(id, r && r.tot && r.items[0].votes > 0 ? r.items[0].name : 'none'); }
+    SORTED = []; return;
+  }
   const RELS = new Map();
   if (f === 'residents') { const ind = CIK[m.slice(2)]; for (const id of ids) { const r = ev(ind, unitCtx(lvl, id)); VALUES.set(id, r.x); RELS.set(id, r.rel); } }
   else for (const id of ids) VALUES.set(id, mapValue(lvl, id));
@@ -669,9 +672,9 @@ function paint() {
   }
   for (const id of ids) {
     const x = VALUES.get(id);
-    if (x == null || (m === 'total' && x === 0)) { COLORS.set(id, THEME.nodata); continue; }
+    if (x == null || (m === 'total' && x === 0)) { COLORS.set(id, THEME.nodata); BUCKET.set(id, 'none'); continue; }
     let i = 0; while (i < breaks.length && x >= breaks[i]) i++;
-    COLORS.set(id, cols[i]);
+    COLORS.set(id, cols[i]); BUCKET.set(id, String(i));
   }
   if (f === 'residents' && state.fade) for (const id of ids) if (VALUES.get(id) != null && RELS.get(id) === 'low') FADED.add(id);
 }
@@ -723,7 +726,8 @@ const isFocus = id => state.focus && state.focus.lvl === state.level && state.fo
 function baseStyle(f) {
   const id = featIdOf(f), lvl = state.level, vm = vintageMode();
   const foc = !vm && isFocus(id), cmp = !vm && inCmp(id), fine = lvl === 'ed' || lvl === 'tract';
-  return {renderer, fillColor:COLORS.get(id) || THEME.nodata, fillOpacity: FADED.has(id) ? .22 : .76,
+  const out = HL && !HL.ids.has(id);
+  return {renderer, fillColor:COLORS.get(id) || THEME.nodata, fillOpacity: out ? .08 : FADED.has(id) ? .22 : .76,
     color: foc ? THEME.sel : cmp ? THEME.accent : THEME.edge, weight: foc ? 3.4 : cmp ? 2.6 : (fine ? .4 : 1.1), opacity:1};
 }
 function buildFill() {
@@ -736,9 +740,9 @@ function buildFill() {
     onEachFeature: (f, layer) => {
       const id = featIdOf(f);
       layerById.set(id, layer);
-      layer.on('mouseover', e => { hoverId = id; layer.setStyle({weight:2.6, color:THEME.sel}); showTip(id, e); });
+      layer.on('mouseover', e => { hoverId = id; layer.setStyle({weight:2.6, color:THEME.sel}); showTip(id, e); markLegend(id); });
       layer.on('mousemove', e => moveTip(e));
-      layer.on('mouseout', () => { if (hoverId === id) hoverId = null; layer.setStyle(baseStyle(f)); hideTip(); });
+      layer.on('mouseout', () => { if (hoverId === id) hoverId = null; layer.setStyle(baseStyle(f)); hideTip(); markLegend(null); });
       layer.on('click', e => {
         if (vm) { L.popup({maxWidth:300}).setLatLng(e.latlng).setContent(`<div class="pop">${vintagePop(id)}</div>`).openOn(map); return; }
         const oe = e.originalEvent;
@@ -766,7 +770,8 @@ function tipText(id) {
   if (!available()) return `<b>${esc(name)}</b>`;
   if (leadMode()) { const r = unitRes(lvl, id); if (!r || !r.tot) return `<b>${esc(name)}</b><span class="v">Not on the ballot here</span>`; const [a, b] = r.items; return `<b>${esc(name)}</b><span class="v">${esc(a.short)} ${pf(a.votes / r.tot * 100)}${b ? ` · ${esc(b.short)} ${pf(b.votes / r.tot * 100)}` : ''}</span>`; }
   const x = VALUES.get(id);
-  return `<b>${esc(name)}</b><span class="v">${x == null ? 'No data' : esc(fmtValue(x))}</span>${vm ? '<span class="h">Click for this district’s result</span>' : ''}`;
+  const rk = x != null && SORTED.length > 2 ? rankOf(x) : null;
+  return `<b>${esc(name)}</b><span class="v">${x == null ? 'No data' : esc(fmtValue(x))}</span>${rk ? `<span class="h">${ord(rk.r)} of ${fmt(rk.n)}</span>` : ''}${vm ? '<span class="h">Click for this district’s result</span>' : ''}`;
 }
 function showTip(id, e) { if (matchMedia('(hover: none)').matches) return; tip.innerHTML = tipText(id); tip.hidden = false; moveTip(e); }
 function moveTip(e) { if (tip.hidden) return; const p = e.containerPoint, W = map.getSize(); const w = tip.offsetWidth, h = tip.offsetHeight; tip.style.left = (p.x + 14 + w > W.x ? p.x - w - 14 : p.x + 14) + 'px'; tip.style.top = (p.y + 14 + h > W.y ? p.y - h - 14 : p.y + 14) + 'px'; }
@@ -879,9 +884,27 @@ const legendTxt = () => {
     const lo = i === 0 ? null : breaks[i - 1], hi = i < breaks.length ? breaks[i] : null;
     const t = diverging ? (lo == null ? `${B} by ${n(hi)}+` : hi == null ? `${A} by ${n(lo)}+` : lo < 0 && hi <= 0 ? `${B} by ${n(hi)} to ${n(lo)}` : lo >= 0 ? `${A} by ${n(lo)} to ${n(hi)}` : `Within ${n(hi)} points`)
       : lo == null ? `Under ${fv(hi)}` : hi == null ? `${fv(lo)} or more` : `${fv(lo)} to ${fv(hi)}`;
-    return `<div class="row"><i style="background:${c}"></i><span>${t}</span></div>`;
+    return legendRow(String(i), `<i style="background:${c}"></i>`, t);
   }).join('');
 };
+const legendRow = (key, sw, label, extra = '') => `<button type="button" class="row lrow" data-b="${esc(key)}" aria-pressed="${!!(HL && HL.pinned && HL.key === key)}">${sw}<span>${label}</span>${extra}</button>`;
+let restyleQ = false;
+function scheduleRestyle() { if (restyleQ) return; restyleQ = true; requestAnimationFrame(() => { restyleQ = false; restyle(); }); }
+function setHL(key, pinned) {
+  if (key == null) { if (!HL) return; HL = null; }
+  else { if (HL && HL.key === key && HL.pinned === pinned) return; const ids = new Set(); for (const [id, b] of BUCKET) if (b === key) ids.add(id); HL = {key, ids, pinned}; }
+  scheduleRestyle();
+  $$('#legend [data-b]').forEach(b => b.setAttribute('aria-pressed', !!(HL && HL.pinned && HL.key === b.dataset.b)));
+}
+function markLegend(id) {
+  const key = id == null ? null : BUCKET.get(id);
+  $$('#legend .lrow.here').forEach(r => r.classList.remove('here'));
+  if (key != null) { const r = $(`#legend [data-b="${CSS.escape(key)}"]`); if (r) r.classList.add('here'); }
+}
+{ const lg = $('#legend');
+  lg.addEventListener('mouseover', e => { const b = e.target.closest('[data-b]'); if (b && !(HL && HL.pinned)) setHL(b.dataset.b, false); });
+  lg.addEventListener('mouseleave', () => { if (HL && !HL.pinned) setHL(null); });
+  lg.addEventListener('click', e => { const b = e.target.closest('[data-b]'); if (!b) return; if (HL && HL.pinned && HL.key === b.dataset.b) setHL(null); else setHL(b.dataset.b, true); }); }
 
 // ---------- the layer card ----------
 function renderCard() {
@@ -896,11 +919,10 @@ function renderCard() {
   }).join('');
   // controls
   const ctl = $('#layerControls');
-  if (f === 'voters') ctl.innerHTML = `<div class="seg" role="radiogroup" aria-label="Which voters">${['All voters','Active','Inactive'].map((t, i) => `<button type="button" role="radio" data-s="${i}" aria-checked="${state.status === i}">${t}</button>`).join('')}</div>`;
-  else if (f === 'elections') ctl.innerHTML = electionControls();
-  else if (f === 'residents') ctl.innerHTML = `<label class="caption" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="fadeLow" ${state.fade ? 'checked' : ''}> Fade places where the number is unreliable</label>${state.level === 'ed' ? '<p class="note">Census numbers for one election district are split from larger tracts, so treat them as rough. Districts give firmer numbers.</p>' : ''}`;
-  else if (f === 'conditions') ctl.innerHTML = `<div class="seg" role="radiogroup" aria-label="Rate or count"><button type="button" role="radio" data-c="rate" aria-checked="${state.cmode === 'rate'}">Rate per 1,000</button><button type="button" role="radio" data-c="count" aria-checked="${state.cmode === 'count'}">Count</button></div>`;
+  if (f === 'elections') ctl.innerHTML = electionControls();
+  else if (f === 'residents' && state.level === 'ed') ctl.innerHTML = '<p class="caption">Census numbers are rough for single election districts. Districts are firmer.</p>';
   else ctl.innerHTML = '';
+  ctl.hidden = !ctl.innerHTML;
   wireControls();
   // availability
   const un = $('#unavail');
@@ -916,16 +938,18 @@ function renderCard() {
     const seen = new Map();
     for (const id of fillIds()) { const r = unitRes(state.level, id); if (r && r.tot && r.items[0].votes > 0) { const it = r.items[0]; if (!seen.has(it.name)) seen.set(it.name, [it, 0]); seen.get(it.name)[1]++; } }
     const list = [...seen.values()].sort((a, b) => b[1] - a[1]).slice(0, 10);
-    lg.innerHTML = list.map(([it, n]) => `<div class="row"><span class="tri"><i style="background:${mix(it.color, .42)}"></i><i style="background:${mix(it.color, .7)}"></i><i style="background:${it.color}"></i></span><span>${esc(it.short === it.name ? it.name : it.short)}</span><small>${n} won</small></div>`).join('')
-      + `<div class="row"><i style="background:${THEME.nodata}"></i><span>Not on the ballot here</span></div><div class="lnote">Darker means a wider lead: under ${LEAD_BINS[0]}, ${LEAD_BINS[0]} to ${LEAD_BINS[1]}, over ${LEAD_BINS[1]} points.</div>`;
+    lg.innerHTML = list.map(([it, n]) => legendRow(it.name, `<span class="tri"><i style="background:${mix(it.color, .42)}"></i><i style="background:${mix(it.color, .7)}"></i><i style="background:${it.color}"></i></span>`, esc(it.short === it.name ? it.name : it.short), `<small>${n}</small>`)).join('')
+      + `<div class="lnote">Darker means a wider lead.</div>`;
   } else {
     const none = f === 'residents' ? 'Too few residents' : f === 'conditions' ? (state.cmode === 'rate' ? 'Too few residents for a rate' : 'None') : f === 'elections' ? 'Not on the ballot here' : f === 'field' ? 'Too few homes' : f === 'money' ? 'No data' : 'No registered voters';
-    lg.innerHTML = legendTxt() + `<div class="row"><i style="background:${THEME.nodata}"></i><span>${none}</span></div>`
-      + (f === 'residents' && state.fade ? `<div class="row"><i style="background:${cols[Math.floor(cols.length / 2)] || '#ccc'};opacity:.3"></i><span>Faded: unreliable</span></div>` : '')
-      + `<div class="lnote">${m === 'margin' ? 'D+20 means Democrats outnumber Republicans by 20 points.' : diverging ? 'Points ahead, as a share of all votes for the office.' : `Each color covers about the same number of ${LEVELS[state.level].plural}.`}</div>`;
+    const anyNone = [...BUCKET.values()].includes('none');
+    lg.innerHTML = legendTxt() + (anyNone ? legendRow('none', `<i style="background:${THEME.nodata}"></i>`, none) : '')
+      + (FADED.size ? `<div class="row"><i style="background:${cols[Math.floor(cols.length / 2)] || '#ccc'};opacity:.3"></i><span>Pale: unreliable estimate</span></div>` : '')
+      + (m === 'margin' ? '<div class="lnote">D+20: Democrats ahead by 20 points.</div>' : '');
   }
   $('#layerDesc').textContent = metricDesc();
   $('#layerSrc').textContent = metricSrc();
+  $('#resDl').hidden = f !== 'elections' || !curC();
 }
 function unavailText() {
   const m = state.metric, lv = levelsFor(m);
@@ -939,30 +963,27 @@ function unavailText() {
 }
 const EL_CHIP = {'2024-general':'Nov 2024', '2025-primary':'June 2025', '2025-general':'Nov 2025', '2026-primary':'June 2026'};
 const PARTY_SHORT = {Democratic:'Dem', Republican:'Rep', Conservative:'Con', 'Working Families':'WFP'};
-const raceShort = c => { const t = c.title.replace('President/Vice President', 'President').replace(/^(Democratic|Republican|Conservative|Working Families) Primary: /, ''); return c.party ? `${PARTY_SHORT[c.party] || c.party} ${t.toLowerCase().startsWith('mayor') ? 'mayor' : t}` : t; };
+const raceShort = c => { const t = c.title.replace('President/Vice President', 'President').replace(/^(Democratic|Republican|Conservative|Working Families) Primary: /, '').replace(/^City Comptroller$/, 'Comptroller').replace(/^United States Senator$/, 'U.S. Senate').replace(/^State Comptroller$/, 'State Comptroller'); return c.party ? `${PARTY_SHORT[c.party] || c.party} ${/^(Mayor|Public Advocate|Comptroller|Governor)$/.test(t) ? t.toLowerCase() : t}` : t; };
 function electionControls() {
   const E = curE(); if (!E) return '<p class="caption">Loading results</p>';
   const c = curC(), opts = candOptions(c), vs = viewsFor(c);
   const turnoutAny = c && (E.id === '2026-primary' || E.id === '2025-general') && !useFinal(c);
   let h = `<div class="seg" role="radiogroup" aria-label="What to show">${vs.map(([k, l]) => `<button type="button" role="radio" data-v="${k}" aria-checked="${k === state.res.v}" ${k === 'turnout' && !turnoutAny ? 'disabled title="Turnout needs a voter roll from the same time; shown for the June 2026 primary and the November 2025 general."' : ''}>${l}</button>`).join('')}</div>`;
-  if (c && c.rcv) h += `<div class="seg" role="radiogroup" aria-label="Ranked-choice round"><button type="button" role="radio" data-r="1" aria-checked="${state.res.round !== 'final'}">First choices</button><button type="button" role="radio" data-r="final" aria-checked="${state.res.round === 'final'}">Final round</button></div>`;
+  if (c && c.rcv) h += `<label class="caption toggle"><input type="checkbox" id="finalChk" ${state.res.round === 'final' ? 'checked' : ''}> Final ranked-choice round</label>`;
   const sel = (id, val, lab) => `<label class="field-row"><span class="label">${lab}</span><select id="${id}">${opts.map(v => `<option value="${esc(v)}" ${v === val ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`;
   const prop = c && !c.group && prep(c).proposal;
   if (state.res.v === 'share' && !prop) h += sel('optA', state.res.a, c && c.group ? 'Party' : 'Candidate');
   if (state.res.v === 'h2h') h += `<div class="two">${sel('optA', state.res.a, 'Candidate')}${sel('optB', state.res.b, 'Against')}</div>`;
-  if (c && !c.group) {
-    const p = prep(c);
-    let items = p.cands.map(cd => ({name:cd.name, color:cd.color, votes:cd.votes})), denom = Object.values(c.rows).reduce((s, r) => s + r.slice(1).reduce((a, b) => a + b, 0), 0), note = c.vote_for > 1 ? ` Vote for ${c.vote_for}; shares are of all votes.` : '';
-    if (useFinal(c)) { const fr = c.rcv.rounds[c.rcv.rounds.length - 1]; items = c.rcv.finalists.map(n => ({name:n, color:colorOfCand(c, n), votes:fr[n]})); denom = items.reduce((s, x) => s + x.votes, 0); note = ` Final round after ${c.rcv.rounds.length - 1} rounds; shares of ballots still counting.`; }
-    items.sort((a, b) => b.votes - a.votes);
-    h += `<div class="cbars">${items.slice(0, 4).map(it => `<div class="cbar"><span class="cn">${esc(it.name)}</span><span class="ct"><i style="width:${(it.votes / denom * 100).toFixed(1)}%;background:${it.color}"></i></span><b>${pf(it.votes / denom * 100)}</b></div>`).join('')}</div>
-      <p class="caption">${fmt(c.ballots)} ballots${c.scope[0] !== 'city' && c.scope_name ? ` in ${esc(c.scope_name)}` : ' citywide'}.${note}</p>`;
-  } else if (c && c.group) h += `<p class="caption">${c.members.length} separate races, each shown in its own district.</p>`;
   const notes = [];
-  if (!E.same_lines_as_map && state.level === 'ed') notes.push(`This election used older election district lines (${E.vintage.toUpperCase()}), so the map shows those. Click one to see its result.`);
-  if (state.res.v === 'turnout') notes.push(E.id === '2025-general' ? 'Turnout compares ballots with February 2026 registration, three months after the election.' : `Turnout compares ballots with ${c && c.party ? 'enrolled ' + c.party + 's' : 'registered voters'} in February 2026.`);
-  if (notes.length) h += `<p class="note">${notes.map(esc).join(' ')}</p>`;
-  h += '<div><button type="button" class="link" id="resDl">Download these results</button></div>';
+  if (c && !c.group) {
+    let items = prep(c).cands.map(cd => ({name:cd.name, votes:cd.votes})), denom = Object.values(c.rows).reduce((t, r) => t + r.slice(1).reduce((x, y) => x + y, 0), 0);
+    if (useFinal(c)) { const fr = c.rcv.rounds[c.rcv.rounds.length - 1]; items = c.rcv.finalists.map(n => ({name:n, votes:fr[n]})); denom = items.reduce((t, x) => t + x.votes, 0); }
+    items.sort((x, y) => y.votes - x.votes);
+    notes.push(items.slice(0, 2).map(it => `${shortName(it.name)} ${pf(it.votes / denom * 100)}`).join(', ') + (c.scope[0] === 'city' ? ' citywide' : ''));
+  }
+  if (!E.same_lines_as_map && state.level === 'ed') notes.push(`Shown on the ${E.vintage.toUpperCase()} district lines used then`);
+  if (state.res.v === 'turnout') notes.push(`Ballots per ${c && c.party ? 'enrolled ' + c.party : 'registered voter'}, February 2026 rolls`);
+  if (notes.length) h += `<p class="caption">${notes.map(esc).join('. ')}.</p>`;
   return h;
 }
 function wireControls() {
@@ -971,10 +992,9 @@ function wireControls() {
   const fl = $('#fadeLow'); if (fl) fl.addEventListener('change', e => { state.fade = e.target.checked; refreshMap(); });
 
   $$('#layerControls [data-v]').forEach(b => b.addEventListener('click', async () => { state.res.v = b.dataset.v; await ensureResults(); refreshMap(); }));
-  $$('#layerControls [data-r]').forEach(b => b.addEventListener('click', async () => { state.res.round = b.dataset.r; await ensureResults(); refreshMap(); renderSheet(); }));
+  const fc = $('#finalChk'); if (fc) fc.addEventListener('change', async e => { state.res.round = e.target.checked ? 'final' : '1'; await ensureResults(); refreshMap(); renderSheet(); });
   const a = $('#optA'); if (a) a.addEventListener('change', e => { state.res.a = e.target.value; if (state.res.b === state.res.a) state.res.b = candOptions(curC()).find(x => x !== state.res.a); refreshMap(); });
   const b = $('#optB'); if (b) b.addEventListener('change', e => { state.res.b = e.target.value; refreshMap(); });
-  const d = $('#resDl'); if (d) d.addEventListener('click', downloadResults);
 }
 async function ensureResults() {
   const E = await loadElection(state.res.e);
@@ -1023,21 +1043,24 @@ function translateFocus(fc, l) {
   return null;
 }
 $('#levelSel').addEventListener('change', e => setLevel(e.target.value));
+$('#resDl').addEventListener('click', downloadResults);
 
 
 // ---------- picking what the map shows: a topic, then a measure, one click each ----------
 const PICKS = {
-  voters: [['dem','Democrats'], ['rep','Republicans'], ['blank','No party'], ['margin','Dem minus Rep'], ['total','Registered'], ['inactive','Inactive']],
-  residents: [['c:med_inc','Income'], ['c:reg','Voters per 100 eligible'], ['c:hisp','Hispanic'], ['c:nhblack','Black'], ['c:nhasian','Asian'], ['c:nhwhite','White'], ['c:fborn','Born abroad'], ['c:renter','Renters']],
-  field: [['f:units','Homes'], ['f:vph','Voters per 100 homes'], ['f:p1_2','1 or 2 units'], ['f:p3_9','3 to 9 units'], ['f:p10_49','10 to 49 units'], ['f:p50','50+ units'], ['f:pnycha','NYCHA']],
-  conditions: [['k:311_total','All 311'], ['k:311_noise','Noise'], ['k:311_heat','No heat'], ['k:311_rodent','Rodents'], ['k:hpd_total','Housing violations'], ['k:evict_evict','Evictions'], ['k:nypd_total','All crime'], ['k:nypd_violent','Violent crime']],
-  money: [['m:fund','Council funding'], ['m:cfb','City donations'], ['m:cfb_pc','City, per resident'], ['m:fec','Federal donations'], ['m:fec_pc','Federal, per resident'], ['m:fec_dem','Federal to Democrats']]
+  voters: [['dem','Democrats'], ['rep','Republicans'], ['blank','No party']],
+  residents: [['c:med_inc','Income'], ['c:renter','Renters'], ['c:fborn','Born abroad']],
+  field: [['f:units','Homes'], ['f:vph','Voters per home']],
+  conditions: [['k:311_total','311'], ['k:evict_evict','Evictions'], ['k:nypd_total','Crime']],
+  money: [['m:fund','Council funding'], ['m:cfb','Donations']]
 };
 const DEFAULT_OF = {voters:'dem', elections:'r', residents:'c:med_inc', field:'f:units', conditions:'k:311_total', money:'m:fund'};
 const MORE = {
   voters: () => [['Party enrollment', METRICS.map(x => [x.k, x.label])]],
   residents: () => CATS.slice(1).map(c => [c.label, CI.filter(i => i.cat === c.k).map(i => ['c:' + i.k, i.label])]),
-  conditions: () => ['311 requests', 'Housing', 'Crime'].map(g => [g, COND.filter(x => x.g === g).map(x => ['k:' + x.k, x.label])])
+  conditions: () => ['311 requests', 'Housing', 'Crime'].map(g => [g, COND.filter(x => x.g === g).map(x => ['k:' + x.k, x.label])]),
+  field: () => [['Homes', FIELD.map(x => ['f:' + x.k, x.label])]],
+  money: () => [['Council funding', [['m:fund', MONEYK.fund.label]]], ['Donations by ZIP code', MONEY.slice(1).map(x => ['m:' + x.k, x.label])]]
 };
 function renderPicker() {
   const m = state.metric, f = famOf(m);
@@ -1045,23 +1068,23 @@ function renderPicker() {
   let h = '';
   if (PICKS[f]) {
     const picks = PICKS[f].filter(([k]) => validMetric(k)), inPicks = picks.some(([k]) => k === m);
-    h = `<div class="chips">${picks.map(([k, l]) => `<button type="button" class="chip" data-m="${k}" aria-pressed="${k === m}">${esc(l)}</button>`).join('')}</div>`;
+    h = `<div class="chips">${picks.map(([k, l]) => `<button type="button" class="chip" data-m="${k}" aria-pressed="${k === m}">${esc(l)}</button>`).join('')}`;
     if (MORE[f]) {
       const groups = MORE[f](), n = groups.reduce((t, [, l]) => t + l.length, 0);
-      h += `<select class="more" id="moreSel" aria-label="Every ${esc(FAMK[f].label.toLowerCase())} measure"><option value="" ${inPicks ? 'selected' : ''}>All ${n} measures</option>${groups.map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(([k, lab]) => `<option value="${k}" ${!inPicks && k === m ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</optgroup>`).join('')}</select>`;
+      h += `<select class="chip chipsel${inPicks ? '' : ' on'}" id="moreSel" aria-label="Every ${esc(FAMK[f].label.toLowerCase())} measure"><option value="" ${inPicks ? 'selected' : ''}>More</option>${groups.map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(([k, lab]) => `<option value="${k}" ${!inPicks && k === m ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</optgroup>`).join('')}</select>`;
     }
+    h += '</div>';
   }
   if (f === 'elections') h = electionPicks();
   $('#picks').innerHTML = h; $('#picks').hidden = !h;
 }
 function electionPicks() {
   const E = curE(); if (!E) return '';
-  const top = (contestGroups(E)[0][1] || []).slice(0, 4);
-  const raceOpts = contestGroups(E).filter(([, l]) => l.length).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(x => `<option value="${esc(x.id)}" ${x.id === state.res.c ? 'selected' : ''}>${esc(x.title.replace(/^(Democratic|Republican|Conservative|Working Families) Primary: /, '$1: '))}</option>`).join('')}</optgroup>`).join('');
+  const top = (contestGroups(E)[0][1] || []).slice(0, 3), inTop = top.some(x => x.id === state.res.c);
+  const raceOpts = contestGroups(E).filter(([, l]) => l.length).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(x => `<option value="${esc(x.id)}" ${x.id === state.res.c && !inTop ? 'selected' : ''}>${esc(x.title.replace(/^(Democratic|Republican|Conservative|Working Families) Primary: /, '$1: '))}</option>`).join('')}</optgroup>`).join('');
   const n = contestGroups(E).reduce((t, [, l]) => t + l.length, 0);
   return `<div class="seg seg4" role="radiogroup" aria-label="Election">${ELX.slice().sort((a, b) => a.date.localeCompare(b.date)).map(e => `<button type="button" role="radio" data-el="${e.id}" aria-checked="${e.id === state.res.e}">${esc(EL_CHIP[e.id] || ELSHORT[e.id])}</button>`).join('')}</div>
-    <div class="chips" aria-label="Main races">${top.map(x => `<button type="button" class="chip" data-rc="${esc(x.id)}" aria-pressed="${x.id === state.res.c}">${esc(raceShort(x))}</button>`).join('')}</div>
-    <select id="raceSel" class="more" aria-label="Every race in this election (${n})">${raceOpts}</select>`;
+    <div class="chips" aria-label="Races">${top.map(x => `<button type="button" class="chip" data-rc="${esc(x.id)}" aria-pressed="${x.id === state.res.c}">${esc(raceShort(x))}</button>`).join('')}<select id="raceSel" class="chip chipsel${inTop ? '' : ' on'}" aria-label="Every race in this election (${n})">${inTop ? '<option value="" selected>More</option>' : ''}${raceOpts}</select></div>`;
 }
 $('#topics').addEventListener('click', e => {
   const b = e.target.closest('[data-fam]'); if (!b || b.dataset.fam === famOf(state.metric)) return;
@@ -1075,7 +1098,7 @@ $('#picks').addEventListener('click', e => {
 });
 $('#picks').addEventListener('change', async e => {
   if (e.target.id === 'moreSel' && e.target.value) setMetric(e.target.value);
-  if (e.target.id === 'raceSel') { state.res.c = e.target.value; await ensureResults(); refreshMap(); renderSheet(); }
+  if (e.target.id === 'raceSel' && e.target.value) { state.res.c = e.target.value; await ensureResults(); refreshMap(); renderSheet(); }
 });
 $('#picks').addEventListener('click', async e => {
   const el = e.target.closest('[data-el]'), rc = e.target.closest('[data-rc]');
@@ -1415,22 +1438,30 @@ function renderTray() {
   $('#trayOpen').addEventListener('click', () => openCompare());
   $('#trayClear').addEventListener('click', () => { state.cmp[lvl] = []; restyle(); renderLabels(); renderTray(); renderSheetHead(); writeHash(); });
 }
-const openGroups = new Set(['Voters by party', 'Key numbers', 'Representatives', 'Donations', 'Homes']);
+const openGroups = new Set(['Voters by party', 'Key numbers', 'Representatives', 'Donations', 'Nov 2025 general: Mayor']);
+// races every comparison carries: [election, contest, label, candidates, final ranked-choice round]
+const CMP_RACES = [
+  ['2025-general', 'mayor-nyc', 'Mayor', ['Zohran Kwame Mamdani', 'Andrew M. Cuomo', 'Curtis A. Sliwa']],
+  ['2025-primary', 'democratic-mayor-citywide', 'Democratic mayoral primary, final round', ['Zohran Kwame Mamdani', 'Andrew M. Cuomo'], true],
+  ['2024-general', 'president-vice-president-nyc', 'President', ['Kamala D. Harris / Tim Walz', 'Donald J. Trump / JD Vance']]
+];
 let cmpIds = [];
 async function openCompare(ids) {
   cmpIds = ids || state.cmp[state.level];
   if (!cmpIds.length) return;
-  await Promise.all([loadCensus(), loadDoors(), loadConds().catch(() => null), loadPolls(), state.level === 'cc' ? loadFund().catch(() => null) : null, state.level === 'zip' ? loadDon() : null]);
+  await Promise.all([loadCensus(), loadDoors(), loadConds().catch(() => null), loadPolls(), state.level === 'cc' ? loadFund().catch(() => null) : null, state.level === 'zip' ? loadDon() : null,
+    ...(['tract', 'zip'].includes(state.level) ? [] : [...new Set(CMP_RACES.map(r => r[0]))].map(e => loadElection(e).catch(() => null)))]);
+  state.cmpSort = null; $('#cmpFind').value = '';
   renderCompare(); $('#cmpDlg').showModal();
 }
 function renderCompare() {
-  const lvl = state.level, ids = cmpIds, st = state.status, o = st * 7;
+  const lvl = state.level, ids = cmpIds, st = state.status;
   $('#cmpTitle').textContent = ids.length > 1 ? `Comparing ${ids.length} ${LEVELS[lvl].plural}` : unitLong(lvl, ids[0]);
   const groups = [];
-  const group = (title, rows) => rows && groups.push(`<tbody><tr class="group"><td colspan="99"><button type="button" data-g="${esc(title)}" aria-expanded="${openGroups.has(title)}">${esc(title)}</button></td></tr></tbody><tbody ${openGroups.has(title) ? '' : 'hidden'} data-gb="${esc(title)}">${rows}</tbody>`);
   if (lvl === 'zip') {
     const all = ids.map(id => ({id, label:unitName(lvl, id), a:DON.areas[id] || {}}));
     const row = (name, fn) => `<tr><td>${name}</td>` + all.map(c => `<td>${fn(c)}</td>`).join('') + '</tr>';
+    const group = (title, rows) => rows && groups.push(`<tbody><tr class="group"><td colspan="99"><button type="button" data-g="${esc(title)}" aria-expanded="${openGroups.has(title)}">${esc(title)}</button></td></tr></tbody><tbody ${openGroups.has(title) ? '' : 'hidden'} data-gb="${esc(title)}">${rows}</tbody>`);
     group('Donations', row('Residents (est.)', c => fmt(DON.pop[c.id])) + row('2025 city races', c => money(c.a.cfb ? c.a.cfb.total : 0)) + row('City donors', c => fmt(c.a.cfb ? c.a.cfb.donors : 0))
       + row('City, per resident', c => c.a.cfb && DON.pop[c.id] ? '$' + (c.a.cfb.total / DON.pop[c.id]).toFixed(2) : '–') + row('Federal 2025 and 2026', c => money(c.a.fec ? c.a.fec.total : 0)) + row('Federal donors', c => fmt(c.a.fec ? c.a.fec.donors : 0))
       + row('Federal to Democrats', c => money(c.a.fec && c.a.fec.by_party.Democratic || 0)) + row('Federal to Republicans', c => money(c.a.fec && c.a.fec.by_party.Republican || 0))
@@ -1439,42 +1470,107 @@ function renderCompare() {
     wireGroups(); $('#cmpNote').textContent = 'By donor ZIP code.'; $('#exEds').hidden = true; $('#exAll').textContent = 'Download all ZIP code areas';
     return;
   }
-  const columns = ids.map(id => ({id, label:unitName(lvl, id), u:AGG[lvl].get(id), v:AGG[lvl].get(id).v, ctx:unitCtx(lvl, id)}));
-  if (ids.length > 1) { const {v, ctx} = combined(lvl, ids); columns.push({label:'All together', v, u:{eds:ids.flatMap(id => AGG[lvl].get(id).eds)}, ctx, combined:true, ids}); }
-  const all = [...columns, {label:'All of NYC', v:CITY, ref:true, u:{eds:[]}, ctx:cityCtx(), id:'__city'}];
-  const head = `<tr><th>${['All voters', 'Active voters', 'Inactive voters'][st]}${lvl === 'tract' ? ' (est.)' : ''}</th>` + all.map(c => `<th class="${c.ref ? 'ref' : ''}">${esc(c.label)}</th>`).join('') + '</tr>';
-  const row = (name, fn, cls = '') => `<tr><td>${name}</td>` + all.map(c => `<td class="${cls} ${c.ref ? 'ref' : ''}">${fn(c)}</td>`).join('') + '</tr>';
-  const sumOf = (c, fn) => c.combined ? c.ids.reduce((s, id) => s + (fn(id) || 0), 0) : fn(c.id);
+  // columns: each picked place, then (when several) all of them together, then the city
+  const many = ids.length > 8 && !state.cmpEach;
+  let columns = many ? [] : ids.map(id => ({id, label:unitName(lvl, id), u:AGG[lvl].get(id), v:AGG[lvl].get(id).v, ctx:unitCtx(lvl, id), ids:[id]}));
+  if (ids.length > 1) { const {v, ctx} = combined(lvl, ids); columns.push({label: many ? `All ${ids.length} together` : 'All together', v, u:{eds:ids.flatMap(id => AGG[lvl].get(id).eds)}, ctx, combined:true, ids}); }
+  const city = {label:'All of NYC', v:CITY, ref:true, u:{eds:[]}, ctx:cityCtx(), id:'__city', ids:[]};
+  const sumOf = (c, fn) => c.ids.reduce((s, id) => s + (fn(id) || 0), 0);
+  const dOf = (c, k) => c.ref ? DCITY[DF[k]] : sumOf(c, id => { const a = doorsOf(lvl, id); return a ? a[DF[k]] : 0; });
+  // a row knows how to get a number (and its margin) for any column; cells are shaded against the city
+  const G = [];
+  const grp = (title, rows) => { if (rows.length) G.push({title, rows}); };
+  const num = (key, label, get, opt = {}) => ({key, label, get, ...opt});
+  const txt = (key, label, get) => ({key, label, get:c => ({html:get(c)}), plain:true, cls:'wrap'});
   if (['cc','ad','sd','cd','ed'].includes(lvl)) {
     const roles = lvl === 'ed' ? ['cc','ad','sd','cd'] : [lvl];
-    group('Representatives', roles.map(k => row(ROLE[k], c => { if (c.ref || c.combined) return ''; const d = lvl === 'ed' ? EDM[c.id] && EDM[c.id][k] : c.id; const r = REPS[k] && REPS[k][String(d)]; return r ? esc(r.vacant ? 'Vacant' : r.name) : '–'; }, 'wrap')).join(''));
+    grp('Representatives', roles.map(k => txt('rep' + k, ROLE[k], c => { if (c.ref || c.combined) return ''; const d = lvl === 'ed' ? EDM[c.id] && EDM[c.id][k] : c.id; const r = REPS[k] && REPS[k][String(d)]; return r ? esc(r.vacant ? 'Vacant' : r.name) : '–'; })));
   }
-  let r = row('Total', c => `<b>${fmt(c.v[o + 6])}</b>`);
-  PARTIES.forEach((p, i) => { r += row(PNAME[p], c => `${fmt(c.v[o + i])}<span class="pct">${pf(share(c.v, st, i))}</span>`); });
-  r += row('Democrats minus Republicans', c => gap(metricValue(c.v, 'margin', st))) + row('Inactive share', c => pf(c.v[6] ? c.v[20] / c.v[6] * 100 : null));
-  group('Voters by party', r);
-  if (state.metric === 'r' && curC() && resAvailable(curC(), lvl) && !vintageMode()) {
-    const cc = curC(), names = candOptions(cc).slice(0, 8), resOf = c => c.combined || c.ref ? null : unitRes(lvl, c.id);
-    let rr = names.map(nm => row(esc(nm), c => { const x = resOf(c); if (!x || !x.tot) return '–'; const it = x.items.find(i => i.name === nm); return it ? `${fmt(it.votes)}<span class="pct">${pf(it.votes / x.tot * 100)}</span>` : '–'; })).join('');
-    rr += row('Ballots', c => { const x = resOf(c); return x ? fmt(x.b) : '–'; }) + row('Turnout', c => { const x = resOf(c); const t = x && turnoutOf(cc, lvl, c.id, x); return t != null ? pf(t) : '–'; });
-    openGroups.add(`Election: ${cc.title}`); group(`Election: ${cc.title}`, rr);
+  const o = st * 7;
+  grp('Voters by party', [
+    num('vt', 'Total', c => ({x:c.v[o + 6], html:`<b>${fmt(c.v[o + 6])}</b>`}), {kind:'count'}),
+    ...PARTIES.map((p, i) => num('vp' + p, PNAME[p], c => { const x = share(c.v, st, i); return {x, html:`${fmt(c.v[o + i])}<span class="pct">${pf(x)}</span>`}; }, {kind:'pts', scale:15})),
+    num('vmargin', 'Democrats minus Republicans', c => { const x = metricValue(c.v, 'margin', st); return {x, html:gap(x)}; }, {kind:'pts', scale:30}),
+    num('vinact', 'Inactive share', c => { const x = c.v[6] ? c.v[20] / c.v[6] * 100 : null; return {x, html:pf(x)}; }, {kind:'pts', scale:5})
+  ]);
+  // recent elections: the main races, so every comparison carries how places voted
+  if (lvl !== 'tract') for (const [eid, cid, label, names, final] of CMP_RACES) {
+    const E = RES[eid], c = E && E.byId.get(cid); if (!c || (lvl === 'ed' && !E.same_lines_as_map)) continue;
+    const tally = cc => { // votes for the race summed over a column's places
+      const out = {tot:0, b:0, by:{}};
+      const units = cc.ref ? [...aggContest(E, c, 'boro').keys()].map(b => ['boro', b]) : cc.ids.map(id => [lvl, id]);
+      for (const [l, id] of units) {
+        if (final && c.rcv) { const a = aggFinal(E, c, l).get(id); if (!a || a.host) continue; out.b += a.b; c.rcv.finalists.forEach((nm, i) => { out.by[nm] = (out.by[nm] || 0) + a.f[i]; out.tot += a.f[i]; }); }
+        else { const a = aggContest(E, c, l).get(id); if (!a || a.host) continue; out.b += a.b; out.tot += a.tot; prep(c).cands.forEach((cd, i) => { out.by[cd.name] = (out.by[cd.name] || 0) + a.cv[i]; }); }
+      }
+      return out;
+    };
+    const memo = new Map(), T = cc => { const k = cc.ref ? '__city' : cc.ids.join(','); if (!memo.has(k)) memo.set(k, tally(cc)); return memo.get(k); };
+    grp(`${ELSHORT[eid]}: ${label}`, names.map(nm => num(`e:${eid}:${cid}:${nm}`, esc(nm), cc => { const t = T(cc); const v = t.by[nm]; const x = t.tot && v != null ? v / t.tot * 100 : null; return {x, html: x == null ? '–' : `${fmt(v)}<span class="pct">${pf(x)}</span>`}; }, {kind:'pts', scale:20}))
+      .concat([num(`e:${eid}:${cid}:ballots`, 'Ballots', cc => { const t = T(cc); return {x:t.b, html:fmt(t.b)}; }, {kind:'count'})]));
   }
-  for (const cat of CATS) group(cat.k === 'key' ? 'Key numbers' : cat.label, catItems(cat.k).map(i => row(esc(i.label), c => { const rv = ev(i, c.ctx); return `${fmtC(i, rv.x)}<span class="pct">${rv.moe != null ? fmtMoe(i, rv.moe) : ''}</span>${relDot(rv.rel)}`; })).join(''));
-  const dOf = (c, k) => c.ref ? DCITY[DF[k]] : sumOf(c, id => { const a = doorsOf(lvl, id); return a ? a[DF[k]] : 0; });
-  group('Homes', row('Homes', c => fmt(dOf(c, 'units'))) + row('Active voters per 100 homes', c => { const u = dOf(c, 'units'); return u >= 20 ? (c.v[13] / u * 100).toFixed(0) : '–'; })
-    + HOME_SEG.map(([k, l]) => row(`In ${l}${k === 'u1_2' ? '' : ' unit'} buildings`, c => { const u = dOf(c, 'units'); return u ? pf(dOf(c, k) / u * 100) : '–'; })).join('')
-    + row('In NYCHA', c => { const u = dOf(c, 'units'); return u ? pf(dOf(c, 'nycha') / u * 100) : '–'; }));
-  if (CAGG && lvl !== 'tract') group('Neighborhood conditions, per 1,000', COND.map(k => row(`${esc(k.label)} <span class="pct">${esc(condWindow(k.src))}</span>`, c => {
-    const n = c.ref ? CAGG.city[CF[k.k]] : sumOf(c, id => condCount(k.k, lvl, id));
-    const den = dOf(c, k.per === 'hu' ? 'hu20' : 'pop20');
-    return den >= (k.per === 'hu' ? 100 : 200) ? `${(n / den * 1000).toFixed(1)}<span class="pct">${fmt(n)}</span>` : `–<span class="pct">${fmt(n)}</span>`;
-  })).join(''));
-  if (lvl === 'cc' && FUND) group('Council discretionary funding, FY2027', row('Total designated', c => c.ref ? money(Object.values(FUND.cc).reduce((s, x) => s + x.total, 0)) : money(sumOf(c, id => FUND.cc[String(id)] ? FUND.cc[String(id)].total : 0))) + row('Grants', c => c.ref ? '' : fmt(sumOf(c, id => FUND.cc[String(id)] ? FUND.cc[String(id)].n : 0))));
-  if (lvl === 'ed') group('Where it sits', ['cc','ad','sd','cd','boro'].map(k => row(k === 'boro' ? 'Borough' : LEVELS[k].short, c => c.combined || c.ref ? '' : esc(EDM[c.id] && EDM[c.id][k] != null ? EDM[c.id][k] : '–'))).join('')
-    + row('Election Day poll site', c => { if (c.combined || c.ref) return ''; const p = POLLS.ed[String(c.id)]; return p && p[0] != null ? esc(POLLS.sites[p[0]][0]) : '–'; }, 'wrap'));
-  $('#cmpBody').innerHTML = `<div class="tablewrap"><table><thead>${head}</thead>${groups.join('')}</table></div>
-    <p class="caption" style="margin-top:10px">Census numbers are split into districts by 2020 Census blocks; ± is the 90% margin of error; <i class="reldot rel-medium"></i> medium and <i class="reldot rel-low"></i> low reliability. Homes: PLUTO 26v2. Conditions: NYC Open Data, per 1,000 residents or homes (2020 Census).</p>`;
+  for (const cat of CATS) grp(cat.k === 'key' ? 'Key numbers' : cat.label, catItems(cat.k).map(i => num('c:' + i.k, esc(i.label), c => { const rv = ev(i, c.ctx); return {x:rv.x, moe:rv.moe, html:`${fmtC(i, rv.x)}<span class="pct">${rv.moe != null ? fmtMoe(i, rv.moe) : ''}</span>${relDot(rv.rel)}`}; },
+    {kind: i.type === 'num' ? 'count' : i.type === 'usd' || i.type === 'reg' ? 'rel' : 'pts', scale: i.type ? .5 : 12})));
+  grp('Homes', [
+    num('h:units', 'Homes', c => ({x:dOf(c, 'units'), html:fmt(dOf(c, 'units'))}), {kind:'count'}),
+    num('h:vph', 'Active voters per 100 homes', c => { const u = dOf(c, 'units'), x = u >= 20 ? c.v[13] / u * 100 : null; return {x, html:x == null ? '–' : x.toFixed(0)}; }, {kind:'rel', scale:.5}),
+    ...HOME_SEG.map(([k, l]) => num('h:' + k, `In ${l}${k === 'u1_2' ? '' : ' unit'} buildings`, c => { const u = dOf(c, 'units'), x = u ? dOf(c, k) / u * 100 : null; return {x, html:pf(x)}; }, {kind:'pts', scale:25})),
+    num('h:nycha', 'In NYCHA', c => { const u = dOf(c, 'units'), x = u ? dOf(c, 'nycha') / u * 100 : null; return {x, html:pf(x)}; }, {kind:'pts', scale:15})
+  ]);
+  if (CAGG && lvl !== 'tract') grp('Neighborhood conditions, per 1,000', COND.map(k => num('k:' + k.k, `${esc(k.label)} <span class="pct">${esc(condWindow(k.src))}</span>`, c => {
+    const n = c.ref ? CAGG.city[CF[k.k]] : sumOf(c, id => condCount(k.k, lvl, id)), den = dOf(c, k.per === 'hu' ? 'hu20' : 'pop20');
+    const x = den >= (k.per === 'hu' ? 100 : 200) ? n / den * 1000 : null;
+    return {x, html:`${x == null ? '–' : x.toFixed(1)}<span class="pct">${fmt(n)}</span>`};
+  }, {kind:'rel', scale:1})));
+  if (lvl === 'cc' && FUND) {
+    const per = c => c.ref ? Object.values(FUND.cc).reduce((s, x) => s + x.total, 0) / 51 : sumOf(c, id => FUND.cc[String(id)] ? FUND.cc[String(id)].total : 0) / c.ids.length;
+    grp('Council discretionary funding, FY2027', [
+      num('f:total', 'Total designated', c => { const x = c.ref ? Object.values(FUND.cc).reduce((s, x) => s + x.total, 0) : sumOf(c, id => FUND.cc[String(id)] ? FUND.cc[String(id)].total : 0); return {x, html:money(x)}; }, {kind:'count'}),
+      num('f:per', 'Per district', c => { const x = per(c); return {x, html:money(x)}; }, {kind:'rel', scale:.5}),
+      num('f:n', 'Grants', c => { const x = c.ref ? null : sumOf(c, id => FUND.cc[String(id)] ? FUND.cc[String(id)].n : 0); return {x, html:x == null ? '' : fmt(x)}; }, {kind:'count'})
+    ]);
+  }
+  if (lvl === 'ed') grp('Where it sits', ['cc','ad','sd','cd','boro'].map(k => txt('w' + k, k === 'boro' ? 'Borough' : LEVELS[k].short, c => c.combined || c.ref ? '' : esc(EDM[c.id] && EDM[c.id][k] != null ? EDM[c.id][k] : '–')))
+    .concat([txt('wpoll', 'Election Day poll site', c => { if (c.combined || c.ref) return ''; const p = POLLS.ed[String(c.id)]; return p && p[0] != null ? esc(POLLS.sites[p[0]][0]) : '–'; })]));
+  // evaluate every cell once
+  for (const g of G) for (const r of g.rows) { r.vals = new Map(); for (const c of [...columns, city]) r.vals.set(c, r.get(c)); r.city = r.vals.get(city); }
+  // sort the place columns by a row, if asked
+  const sortRow = state.cmpSort && G.flatMap(g => g.rows).find(r => r.key === state.cmpSort.key);
+  if (sortRow) {
+    const places = columns.filter(c => !c.combined), rest = columns.filter(c => c.combined), sgn = state.cmpSort.dir;
+    places.sort((a, b) => ((sortRow.vals.get(b).x ?? -Infinity) - (sortRow.vals.get(a).x ?? -Infinity)) * sgn);
+    columns = [...places, ...rest];
+  }
+  const all = [...columns, city];
+  const shade = (r, cell) => {
+    if (r.plain || r.kind === 'count' || cell.x == null || r.city.x == null || !isFinite(cell.x)) return '';
+    const d = cell.x - r.city.x;
+    if (cell.moe != null && r.city.moe != null && Math.abs(d) <= Math.hypot(cell.moe, r.city.moe)) return ' class="ns" title="Within the margin of error of the city figure"';
+    const t = r.kind === 'rel' ? (r.city.x ? Math.min(1, Math.abs(cell.x / r.city.x - 1) / r.scale) : 0) : Math.min(1, Math.abs(d) / r.scale);
+    if (t < .04) return '';
+    return ` style="background:${d > 0 ? `rgba(var(--hi-rgb),${(.07 + .38 * t).toFixed(3)})` : `rgba(var(--lo-rgb),${(.07 + .38 * t).toFixed(3)})`}"`;
+  };
+  const q = ($('#cmpFind').value || '').trim().toLowerCase();
+  const rowHTML = r => {
+    const lab = r.plain ? r.label : `<button type="button" class="rsort" data-sort="${esc(r.key)}" title="Sort places by this row">${r.label}${sortRow === r ? (state.cmpSort.dir > 0 ? ' ▾' : ' ▴') : ''}</button>`;
+    return `<tr data-k="${esc(r.key)}"><td>${lab}</td>` + all.map(c => { const cell = r.vals.get(c); return `<td${c.ref ? ' class="ref"' : shade(r, cell)}${r.cls && !c.ref ? ` class="${r.cls}"` : ''}>${cell.html ?? ''}</td>`; }).join('') + '</tr>';
+  };
+  const textOf = s => s.replace(/<[^>]+>/g, '').toLowerCase();
+  const body = G.map(g => {
+    const rows = q ? g.rows.filter(r => textOf(r.label).includes(q) || g.title.toLowerCase().includes(q)) : g.rows;
+    if (!rows.length) return '';
+    const open = q || openGroups.has(g.title);
+    return `<tbody><tr class="group"><td colspan="99"><button type="button" data-g="${esc(g.title)}" aria-expanded="${!!open}">${esc(g.title)}</button></td></tr></tbody><tbody ${open ? '' : 'hidden'} data-gb="${esc(g.title)}">${rows.map(rowHTML).join('')}</tbody>`;
+  }).join('');
+  const head = `<tr><th>${['All voters', 'Active voters', 'Inactive voters'][st]}${lvl === 'tract' ? ' (est.)' : ''}</th>` + all.map(c => `<th class="${c.ref ? 'ref' : ''}">${c.ref || c.combined ? esc(c.label) : `<button type="button" class="hgo" data-go="${esc(c.id)}" title="Open this place">${esc(c.label)}</button>`}</th>`).join('') + '</tr>';
+  $('#cmpBody').innerHTML = `<div class="cmpkey"><span><i class="sw hi"></i>Above the city</span><span><i class="sw lo"></i>Below the city</span>
+    ${ids.length > 8 ? `<button type="button" class="link" id="cmpEach">${many ? `Show all ${ids.length} places` : 'Show only the total'}</button>` : ''}</div>
+    <div class="tablewrap"><table><thead>${head}</thead>${body || '<tbody><tr><td>No rows match.</td></tr></tbody>'}</table></div>
+    <p class="caption" style="margin-top:10px">± is the 90% margin of error. Census gaps smaller than the margins are left unshaded.</p>`;
   wireGroups();
+  $$('#cmpBody [data-sort]').forEach(b => b.addEventListener('click', () => { const k = b.dataset.sort; state.cmpSort = state.cmpSort && state.cmpSort.key === k ? (state.cmpSort.dir > 0 ? {key:k, dir:-1} : null) : {key:k, dir:1}; renderCompare(); }));
+  $$('#cmpBody [data-go]').forEach(b => b.addEventListener('click', () => { $('#cmpDlg').close(); focusPlace(lvl, isId(lvl, b.dataset.go), {zoom:true}); }));
+  const each = $('#cmpEach'); if (each) each.addEventListener('click', () => { state.cmpEach = !state.cmpEach; renderCompare(); });
   const parts = ids.map(id => [id, partial(lvl, id)]).filter(([, p]) => p);
   $('#cmpNote').textContent = parts.length ? parts.map(([id, p]) => `${unitName(lvl, id)} counts only its NYC part (${p.nyc_share}% of residents).`).join(' ') : 'Click a section name to open or close it.';
   $('#exAll').textContent = `Download all ${LEVELS[lvl].plural}`;
@@ -1567,6 +1663,7 @@ async function exportUnits(lvl, ids, base, withTotals) {
   if (withTotals) rows.push(['All of NYC', 'NYC', '', ED_WITH_VOTERS, ...CITY, ...derived(CITY), '', ...REP_H(lvl).map(() => ''), ...cenRow(cityCtx()), ...homeRow(DCITY), ...(CONDS ? condRow(lvl, null, CAGG.city, DCITY) : []), ...FUND_H(lvl).map(() => '')]);
   saveCsv(`${base}_${STAMP}.csv`, rows);
 }
+let findT; $('#cmpFind').addEventListener('input', () => { clearTimeout(findT); findT = setTimeout(renderCompare, 120); });
 $('#exCmp').addEventListener('click', () => exportUnits(state.level, cmpIds, `nyc_${LEVELS[state.level].file}_picked`, true));
 $('#exAll').addEventListener('click', () => exportUnits(state.level, state.level === 'ed' ? sortIds('ed').filter(id => AGG.ed.get(id).eds.length || CityCore.unit(model, 'ed', id)) : sortIds(state.level), `nyc_all_${LEVELS[state.level].file}s`));
 $('#exEds').addEventListener('click', async () => {
