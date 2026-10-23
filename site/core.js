@@ -5,14 +5,17 @@
 'use strict';
 const BR_LO = [0,10000,15000,20000,25000,30000,35000,40000,45000,50000,60000,75000,100000,125000,150000,200000];
 
-function init(cen, spec, EDM) {
+// opts.tractOf: for data on areas finer than tracts (block groups), the tract each area sits in
+// opts.popField: the head count used for the split share (pop for ACS, cvap for CVAP)
+function init(cen, spec, EDM, opts = {}) {
   const F = Object.fromEntries(cen.fields.map((f, i) => [f, i]));
   const NF = cen.fields.length;
   const P = new Set(cen.person_fields);
   const ISP = cen.fields.map(f => P.has(f));
   const TINFO = {}; cen.tracts.forEach((t, i) => { TINFO[t] = cen.tract_info[i]; });
   const W = {tract:new Map(), ed:new Map(), cc:new Map(), ad:new Map(), sd:new Map(), cd:new Map(), boro:new Map()};
-  cen.tracts.forEach((t, i) => W.tract.set(t, new Map([[i, [1, 1]]])));
+  if (opts.tractOf) cen.tracts.forEach((a, i) => { const t = opts.tractOf(a); if (!W.tract.has(t)) W.tract.set(t, new Map()); W.tract.get(t).set(i, [1, 1]); });
+  else cen.tracts.forEach((t, i) => W.tract.set(t, new Map([[i, [1, 1]]])));
   const add = (map, ti, wp, wh) => { const o = map.get(ti); if (o) { o[0] += wp; o[1] += wh; } else map.set(ti, [wp, wh]); };
   for (const [ed, pieces] of Object.entries(cen.xw)) {
     const m = new Map(); for (const [ti, wp, wh] of pieces) add(m, ti, wp, wh);
@@ -24,7 +27,7 @@ function init(cen, spec, EDM) {
       const acc = W[lvl].get(key); for (const [ti, wp, wh] of pieces) add(acc, ti, wp, wh);
     }
   }
-  const model = {F, NF, ISP, TINFO, W, spec, minDen: spec.min_den, cen, cache:{}};
+  const model = {F, NF, ISP, TINFO, W, spec, minDen: spec.min_den, cen, cache:{}, P: F[opts.popField || 'pop']};
   const all = new Map(); cen.tracts.forEach((t, i) => all.set(i, [1, 1]));
   model.city = counts(model, all);
   return model;
@@ -32,7 +35,7 @@ function init(cen, spec, EDM) {
 // estimates and MOEs for one set of tract shares
 function counts(model, wmap) {
   const {NF, ISP, cen} = model;
-  const c = new Float64Array(NF), m2 = new Float64Array(NF), P = model.F.pop;
+  const c = new Float64Array(NF), m2 = new Float64Array(NF), P = model.P;
   let splitPop = 0;
   for (const [ti, [wp, wh]] of wmap) {
     const ct = cen.counts[ti], mt = cen.moe[ti];

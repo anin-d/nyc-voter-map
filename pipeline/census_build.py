@@ -133,9 +133,7 @@ O = lambda k, label: dict(k=k, label=label, cat='origin', num=k, den='pop', orig
 L = lambda k, label: dict(k=k, label='Speak ' + label + ' at home', short=label, cat='lang', num=k, den='pop5', unit='of residents 5+', lang=True)
 SPEC = [
  dict(k='pop', cat='people', label='Residents', type='num', num='pop', col='residents', desc='Total residents.'),
- dict(k='cvap', cat='people', label='Eligible voters (citizens 18+)', type='num', num='cvap', col='citizens_18plus_cvap', desc='U.S. citizens 18 and over, the citizen voting-age population (CVAP).'),
  dict(k='cvap_pct', cat='people', label='Adults who are citizens', num='cvap', den='adults', unit='of adults', col='citizens_pct_of_adults'),
- dict(k='reg', cat='people', label='Active voters per 100 eligible', type='reg', col='active_voters_per_100_cvap', desc='Active registered voters (Feb 2026) for every 100 citizens 18+ (ACS). Low numbers point to unregistered eligible voters.'),
  dict(k='age18_29', cat='people', label='Adults aged 18 to 29', num='age18_29', den='adults', unit='of adults'),
  dict(k='age30_44', cat='people', label='Adults aged 30 to 44', num='age30_44', den='adults', unit='of adults'),
  dict(k='age45_64', cat='people', label='Adults aged 45 to 64', num='age45_64', den='adults', unit='of adults'),
@@ -174,6 +172,7 @@ SPEC = [
 ]
 import re as _re
 for i in SPEC:
+    i.setdefault('src', 'acs')
     if 'col' not in i: i['col'] = _re.sub(r'[^a-z0-9]+', '_', i['label'].lower().replace('’', '')).strip('_') + ('_pct' if 'type' not in i else '')
 assert len({i['col'] for i in SPEC}) == len(SPEC) and len({i['k'] for i in SPEC}) == len(SPEC)
 MIN_DEN = 30          # below this many people/households in the denominator, a share is not shown
@@ -186,77 +185,16 @@ mem = mem.join(attr)
 xwm = xw.join(mem, on='elect_dist')
 cnt_cols = list(C.columns); isP = np.isin(np.array(cnt_cols), PERSON)
 Cn = C.to_numpy(float); Mn = M.to_numpy(float); tix0 = {t: i for i, t in enumerate(C.index)}
-def unit_counts(key):
-    """Estimates and MOEs for every unit of a level. A unit's MOE adds, tract by tract, the tract MOE scaled
-    by the unit's share of that tract (root-sum-of-squares across tracts)."""
-    g = xwm.dropna(subset=[key]).groupby([key, 'tract'])[['w_pop', 'w_hu']].sum().reset_index()
-    g['ti'] = g.tract.map(tix0)
-    est, moe, split = {}, {}, {}
-    pi = cnt_cols.index('pop')
-    for u, grp in g.groupby(key):
-        ti = grp.ti.to_numpy(); wp = grp.w_pop.to_numpy(); w = np.where(isP[None, :], wp[:, None], grp.w_hu.to_numpy()[:, None])
-        est[u] = (Cn[ti] * w).sum(0); moe[u] = np.sqrt(((Mn[ti] * w) ** 2).sum(0))
-        tot = est[u][pi]; split[u] = (Cn[ti, pi] * wp * (wp < 0.95)).sum() / tot if tot > 0 else 0.0
-    E = pd.DataFrame(est, index=cnt_cols).T; Mo = pd.DataFrame(moe, index=cnt_cols).T
-    E.attrs['split'] = pd.Series(split)
-    return E, Mo
+import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import indicators_lib as IL
+def unit_counts(key): return IL.unit_counts(xwm, key, 'tract', C, M, PERSON, 'pop')
 V = pd.DataFrame.from_dict({int(k): v for k, v in edv.items()}, orient='index')
 VCOLS = [f'{p}_{s}' for s in ['total', 'active', 'inactive'] for p in ['dem', 'rep', 'con', 'wor', 'oth', 'blank', 'total']]
 V.columns = VCOLS
 Vm = V.join(mem, how='left')
 
 # ---------- 5. indicators with margins of error ----------
-BR_LO = [0, 10000, 15000, 20000, 25000, 30000, 35000, 40000, 45000, 50000, 60000, 75000, 100000, 125000, 150000, 200000]
-def median_from_brackets(n):
-    tot = sum(n)
-    if tot < 20: return np.nan
-    half, cum = tot / 2, 0
-    for i, c in enumerate(n):
-        if cum + c >= half:
-            if i == 15: return 200000.0
-            return BR_LO[i] + (half - cum) / c * (BR_LO[i + 1] - BR_LO[i]) if c else BR_LO[i]
-        cum += c
-    return np.nan
-def reliability(est, moe, split=0.0, reg=False):
-    # CV under 15% high, 15-30% medium, over 30% low; mostly-split units cap at medium;
-    # registration above 130 per 100 eligible marks a split that is off for that area.
-    if est is None or moe is None or not np.isfinite(est) or not np.isfinite(moe): return ''
-    if est <= 0: return 'low'
-    if reg and est > 130: return 'low'
-    cv = moe / 1.645 / est * 100
-    r = 'high' if cv < 15 else 'medium' if cv < 30 else 'low'
-    return 'medium' if r == 'high' and split > 0.5 else r
-def indicator_table(E, Mo, voters, tract_pub=None):
-    rows = {}
-    SPL = E.attrs.get('split', pd.Series(dtype=float))
-    for u in E.index:
-        c, m = E.loc[u], Mo.loc[u]; v = voters.loc[u] if voters is not None and u in voters.index else None
-        out = {}
-        for i in SPEC:
-            t = i.get('type'); x = mx = np.nan
-            if t == 'num': x, mx = c[i['num']], m[i['num']]
-            elif t == 'usd':
-                if tract_pub is not None and pd.notna(tract_pub.med_inc_pub.get(u)): x, mx = tract_pub.med_inc_pub[u], tract_pub.med_inc_moe.get(u, np.nan)
-                else: x = median_from_brackets([c[f'inc{k:02d}'] for k in range(16)])
-            elif t == 'reg':
-                if c['cvap'] >= MIN_DEN and v is not None: x = v['total_active'] / c['cvap'] * 100; mx = x * m['cvap'] / c['cvap']
-            else:
-                X, Y, mX, mY = c[i['num']], c[i['den']], m[i['num']], m[i['den']]
-                if Y >= MIN_DEN:
-                    pp = X / Y; rad = mX ** 2 - pp ** 2 * mY ** 2
-                    if rad < 0: rad = mX ** 2 + pp ** 2 * mY ** 2
-                    x, mx = pp * 100, np.sqrt(rad) / Y * 100
-            out[i['col']] = x; out[i['col'] + '_moe'] = mx; out[i['col'] + '_reliability'] = reliability(x, mx, SPL.get(u, 0.0), t == 'reg') if pd.notna(mx) else ''
-        out['share_of_residents_from_split_tracts'] = round(float(SPL.get(u, 0.0)) * 100, 1)
-        rows[u] = out
-    o = pd.DataFrame.from_dict(rows, orient='index')
-    for i in SPEC:
-        nd = 0 if i.get('type') in ('num', 'usd') else 1
-        o[i['col']] = o[i['col']].round(nd); o[i['col'] + '_moe'] = o[i['col'] + '_moe'].round(nd)
-    if voters is not None:
-        vv = voters.reindex(o.index)
-        o.insert(0, 'active_voters', vv['total_active'].round(1)); o.insert(0, 'registered_voters', vv['total_total'].round(1))
-    return o
+def indicator_table(E, Mo, voters, tract_pub=None): return IL.indicator_table(SPEC, E, Mo, voters, tract_pub, MIN_DEN)
 
 NAMES = {'ed': 'elect_dist', 'cc': 'council_district', 'ad': 'assembly_district', 'sd': 'senate_district', 'cd': 'congressional_district', 'boro': 'borough'}
 LEVEL_RESULTS = {}
@@ -302,5 +240,3 @@ web = {'source': 'ACS 2020-2024 5-year estimates, Census tracts; 2020 Census blo
        'xw': xw_web}
 json.dump(web, open(f'{OUT}/web_census.json', 'w'), separators=(',', ':'))
 print('web payload bytes', os.path.getsize(f'{OUT}/web_census.json'))
-import shutil
-shutil.copy(f'{OUT}/web_census.json', f'{ROOT}/site/data/census.json'); shutil.copy(f'{OUT}/indicators.json', f'{ROOT}/site/data/indicators.json')
