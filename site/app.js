@@ -515,7 +515,8 @@ function contestGroups(E) {
     else if (st === 'boro') boro.push(c);
     else dist.push(c);
   }
-  top.sort((a, b) => b.ballots - a.ballots);
+  const rank = c => { const o = c.office; return /^Mayor|President/.test(o) ? 0 : /Governor/.test(o) ? 1 : /United States Senator/.test(o) ? 2 : /Public Advocate/.test(o) ? 3 : /Comptroller/.test(o) ? 4 : /Attorney General/.test(o) ? 5 : 9; };
+  top.sort((a, b) => rank(a) - rank(b) || b.ballots - a.ballots);
   const o = {cd:0, sd:1, ad:2, cc:3};
   dist.sort((a, b) => (a.party || '').localeCompare(b.party || '') || o[a.scope[0]] - o[b.scope[0]] || a.scope[1] - b.scope[1]);
   return [['Top of the ballot', top], ['Every district race at once', E.groups], ['Borough races', boro], ['District races', dist], ['Party positions', party], ['Judges', judge], ['Ballot proposals', prop]];
@@ -523,7 +524,7 @@ function contestGroups(E) {
 
 // ---------- state and links ----------
 const state = {level:'cc', metric:'dem', status:0, cat:'key', fade:true, lines:new Set(['boro']), polls:new Set(),
-  focus:null, cmp:{}, addr:null, cmode:'rate', tab:'overview', bfam:null,
+  focus:null, cmp:{}, addr:null, cmode:'rate', tab:'overview', lastM:{},
   res:{e:'2025-general', c:null, v:'lead', a:null, b:null, round:'1'}};
 for (const l of LEVEL_ORDER) state.cmp[l] = [];
 const STATUS_KEYS = ['all','active','inactive'];
@@ -885,7 +886,7 @@ const legendTxt = () => {
 // ---------- the layer card ----------
 function renderCard() {
   const m = state.metric, f = famOf(m);
-  $('#layerFam').textContent = FAMK[f].label;
+  renderPicker();
   $('#layerTitle').textContent = metricTitle();
   // levels
   const lv = levelsFor(m), c = curC();
@@ -936,14 +937,14 @@ function unavailText() {
   if (state.level === 'zip') return 'Only political donations are counted by ZIP code.';
   return `This is counted by ${lv.map(l => LEVELS[l].by.toLowerCase()).join(', ').replace(/, ([^,]*)$/, ' or $1')}.`;
 }
+const EL_CHIP = {'2024-general':'Nov 2024', '2025-primary':'June 2025', '2025-general':'Nov 2025', '2026-primary':'June 2026'};
+const PARTY_SHORT = {Democratic:'Dem', Republican:'Rep', Conservative:'Con', 'Working Families':'WFP'};
+const raceShort = c => { const t = c.title.replace('President/Vice President', 'President').replace(/^(Democratic|Republican|Conservative|Working Families) Primary: /, ''); return c.party ? `${PARTY_SHORT[c.party] || c.party} ${t.toLowerCase().startsWith('mayor') ? 'mayor' : t}` : t; };
 function electionControls() {
   const E = curE(); if (!E) return '<p class="caption">Loading results</p>';
   const c = curC(), opts = candOptions(c), vs = viewsFor(c);
-  const raceOpts = contestGroups(E).filter(([, l]) => l.length).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(x => `<option value="${esc(x.id)}" ${x.id === state.res.c ? 'selected' : ''}>${esc(x.title.replace(/^(Democratic|Republican|Conservative|Working Families) Primary: /, '$1: '))}</option>`).join('')}</optgroup>`).join('');
   const turnoutAny = c && (E.id === '2026-primary' || E.id === '2025-general') && !useFinal(c);
-  let h = `<div class="two"><label class="field-row"><span class="label">Election</span><select id="elSel">${ELX.map(e => `<option value="${e.id}" ${e.id === state.res.e ? 'selected' : ''}>${esc(ELSHORT[e.id])}</option>`).join('')}</select></label>
-    <label class="field-row"><span class="label">Race</span><select id="raceSel">${raceOpts}</select></label></div>
-    <div class="seg" role="radiogroup" aria-label="What to show">${vs.map(([k, l]) => `<button type="button" role="radio" data-v="${k}" aria-checked="${k === state.res.v}" ${k === 'turnout' && !turnoutAny ? 'disabled title="Turnout needs a voter roll from the same time; shown for the June 2026 primary and the November 2025 general."' : ''}>${l}</button>`).join('')}</div>`;
+  let h = `<div class="seg" role="radiogroup" aria-label="What to show">${vs.map(([k, l]) => `<button type="button" role="radio" data-v="${k}" aria-checked="${k === state.res.v}" ${k === 'turnout' && !turnoutAny ? 'disabled title="Turnout needs a voter roll from the same time; shown for the June 2026 primary and the November 2025 general."' : ''}>${l}</button>`).join('')}</div>`;
   if (c && c.rcv) h += `<div class="seg" role="radiogroup" aria-label="Ranked-choice round"><button type="button" role="radio" data-r="1" aria-checked="${state.res.round !== 'final'}">First choices</button><button type="button" role="radio" data-r="final" aria-checked="${state.res.round === 'final'}">Final round</button></div>`;
   const sel = (id, val, lab) => `<label class="field-row"><span class="label">${lab}</span><select id="${id}">${opts.map(v => `<option value="${esc(v)}" ${v === val ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`;
   const prop = c && !c.group && prep(c).proposal;
@@ -968,8 +969,7 @@ function wireControls() {
   $$('#layerControls [data-s]').forEach(b => b.addEventListener('click', () => { state.status = +b.dataset.s; refreshMap(); renderSheet(); }));
   $$('#layerControls [data-c]').forEach(b => b.addEventListener('click', () => { state.cmode = b.dataset.c; refreshMap(); }));
   const fl = $('#fadeLow'); if (fl) fl.addEventListener('change', e => { state.fade = e.target.checked; refreshMap(); });
-  const el = $('#elSel'); if (el) el.addEventListener('change', async e => { state.res.e = e.target.value; state.res.c = null; await ensureResults(); refreshMap(); renderSheet(); });
-  const rs = $('#raceSel'); if (rs) rs.addEventListener('change', async e => { state.res.c = e.target.value; await ensureResults(); refreshMap(); renderSheet(); });
+
   $$('#layerControls [data-v]').forEach(b => b.addEventListener('click', async () => { state.res.v = b.dataset.v; await ensureResults(); refreshMap(); }));
   $$('#layerControls [data-r]').forEach(b => b.addEventListener('click', async () => { state.res.round = b.dataset.r; await ensureResults(); refreshMap(); renderSheet(); }));
   const a = $('#optA'); if (a) a.addEventListener('change', e => { state.res.a = e.target.value; if (state.res.b === state.res.a) state.res.b = candOptions(curC()).find(x => x !== state.res.a); refreshMap(); });
@@ -1000,7 +1000,7 @@ async function needMetric(m) {
 async function setMetric(m) {
   $('#layerTitle').textContent = 'Loading';
   try { await needMetric(m); } catch (e) { toast('That data didn’t load. Try again.'); return; }
-  state.metric = m;
+  state.metric = m; state.lastM[famOf(m)] = m;
   const lv = levelsFor(m);
   if (!lv.includes(state.level)) { state.level = lv[0]; await needLevel(state.level); }
   if (m === 'r') await ensureResults();
@@ -1024,54 +1024,70 @@ function translateFocus(fc, l) {
 }
 $('#levelSel').addEventListener('change', e => setLevel(e.target.value));
 
-// ---------- layer browser ----------
-function browserItems(fam, q) {
-  const out = [];
-  const add = (head, list) => { if (list.length) out.push([head, list]); };
-  const words = s => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-  const match = s => !q || q.split(/\s+/).every(w => words(s).includes(w));
-  if (!fam || fam === 'voters') add(fam ? 'Party enrollment' : 'Voters', METRICS.filter(m => match(m.label + ' ' + m.desc)).map(m => ({m:m.k, label:m.label, sub:m.desc})));
-  if (!fam || fam === 'residents') for (const c of CATS.slice(1).concat(fam ? [] : [])) add(c.label, CI.filter(i => i.cat === c.k && match(i.label + ' ' + (i.desc || '') + ' ' + c.label)).map(i => ({m:'c:' + i.k, label:i.label, sub:i.desc || ''})));
-  if (!fam || fam === 'field') add('Homes', FIELD.filter(x => match(x.label + ' ' + x.desc + ' doors canvass')).map(x => ({m:'f:' + x.k, label:x.label, sub:x.desc})));
-  if (!fam || fam === 'conditions') for (const g of ['311 requests', 'Housing', 'Crime']) add(g, COND.filter(x => x.g === g && match(x.label + ' ' + g + ' ' + (x.desc || ''))).map(x => ({m:'k:' + x.k, label:x.label, sub:x.desc || (x.per === 'hu' ? 'Per 1,000 homes' : 'Per 1,000 residents'), when:CONDS ? condWindow(x.src) : ''})));
-  if (!fam || fam === 'money') add('Money', MONEY.filter(x => match(x.label + ' ' + x.desc + ' donations')).map(x => ({m:'m:' + x.k, label:x.label, sub:x.desc, when:x.lv[0] === 'cc' ? 'By Council district' : 'By ZIP code'})));
-  if (!fam || fam === 'elections') {
-    const eids = fam ? [state.bel || state.res.e] : ELX.map(e => e.id);
-    for (const eid of eids) {
-      const list = ELIX.contests.filter(([e, , title, cands]) => e === eid && match(title + ' ' + cands.join(' '))).sort((a, b) => b[4] - a[4]);
-      add(ELSHORT[eid], list.slice(0, fam && !q ? 400 : 12).map(([e, cid, title, cands, ballots]) => {
-        const cand = q ? cands.find(n => q.split(/\s+/).some(w => w.length > 2 && words(n).includes(w))) : null;
-        return {race:[e, cid, cand], label:cand ? `${cand} · ${title}` : title, sub:`${fmt(ballots)} ballots${cands.length ? ' · ' + cands.slice(0, 3).join(', ') : ''}`};
-      }));
+
+// ---------- picking what the map shows: a topic, then a measure, one click each ----------
+const PICKS = {
+  voters: [['dem','Democrats'], ['rep','Republicans'], ['blank','No party'], ['margin','Dem minus Rep'], ['total','Registered'], ['inactive','Inactive']],
+  residents: [['c:med_inc','Income'], ['c:reg','Voters per 100 eligible'], ['c:hisp','Hispanic'], ['c:nhblack','Black'], ['c:nhasian','Asian'], ['c:nhwhite','White'], ['c:fborn','Born abroad'], ['c:renter','Renters']],
+  field: [['f:units','Homes'], ['f:vph','Voters per 100 homes'], ['f:p1_2','1 or 2 units'], ['f:p3_9','3 to 9 units'], ['f:p10_49','10 to 49 units'], ['f:p50','50+ units'], ['f:pnycha','NYCHA']],
+  conditions: [['k:311_total','All 311'], ['k:311_noise','Noise'], ['k:311_heat','No heat'], ['k:311_rodent','Rodents'], ['k:hpd_total','Housing violations'], ['k:evict_evict','Evictions'], ['k:nypd_total','All crime'], ['k:nypd_violent','Violent crime']],
+  money: [['m:fund','Council funding'], ['m:cfb','City donations'], ['m:cfb_pc','City, per resident'], ['m:fec','Federal donations'], ['m:fec_pc','Federal, per resident'], ['m:fec_dem','Federal to Democrats']]
+};
+const DEFAULT_OF = {voters:'dem', elections:'r', residents:'c:med_inc', field:'f:units', conditions:'k:311_total', money:'m:fund'};
+const MORE = {
+  voters: () => [['Party enrollment', METRICS.map(x => [x.k, x.label])]],
+  residents: () => CATS.slice(1).map(c => [c.label, CI.filter(i => i.cat === c.k).map(i => ['c:' + i.k, i.label])]),
+  conditions: () => ['311 requests', 'Housing', 'Crime'].map(g => [g, COND.filter(x => x.g === g).map(x => ['k:' + x.k, x.label])])
+};
+function renderPicker() {
+  const m = state.metric, f = famOf(m);
+  $('#topics').innerHTML = FAMS.map(x => `<button type="button" role="tab" data-fam="${x.k}" aria-selected="${x.k === f}" title="${esc(x.sub)}">${esc(x.label)}</button>`).join('');
+  let h = '';
+  if (PICKS[f]) {
+    const picks = PICKS[f].filter(([k]) => validMetric(k)), inPicks = picks.some(([k]) => k === m);
+    h = `<div class="chips">${picks.map(([k, l]) => `<button type="button" class="chip" data-m="${k}" aria-pressed="${k === m}">${esc(l)}</button>`).join('')}</div>`;
+    if (MORE[f]) {
+      const groups = MORE[f](), n = groups.reduce((t, [, l]) => t + l.length, 0);
+      h += `<select class="more" id="moreSel" aria-label="Every ${esc(FAMK[f].label.toLowerCase())} measure"><option value="" ${inPicks ? 'selected' : ''}>All ${n} measures</option>${groups.map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(([k, lab]) => `<option value="${k}" ${!inPicks && k === m ? 'selected' : ''}>${esc(lab)}</option>`).join('')}</optgroup>`).join('')}</select>`;
     }
   }
-  return out;
+  if (f === 'elections') h = electionPicks();
+  $('#picks').innerHTML = h; $('#picks').hidden = !h;
 }
-function openBrowser() {
-  const fam = state.bfam || famOf(state.metric);
-  state.bfam = fam;
-  $('#browserQ').value = '';
-  renderBrowser();
-  $('#browserDlg').showModal();
-  $('#browserQ').focus();
+function electionPicks() {
+  const E = curE(); if (!E) return '';
+  const top = (contestGroups(E)[0][1] || []).slice(0, 4);
+  const raceOpts = contestGroups(E).filter(([, l]) => l.length).map(([g, l]) => `<optgroup label="${esc(g)}">${l.map(x => `<option value="${esc(x.id)}" ${x.id === state.res.c ? 'selected' : ''}>${esc(x.title.replace(/^(Democratic|Republican|Conservative|Working Families) Primary: /, '$1: '))}</option>`).join('')}</optgroup>`).join('');
+  const n = contestGroups(E).reduce((t, [, l]) => t + l.length, 0);
+  return `<div class="seg seg4" role="radiogroup" aria-label="Election">${ELX.slice().sort((a, b) => a.date.localeCompare(b.date)).map(e => `<button type="button" role="radio" data-el="${e.id}" aria-checked="${e.id === state.res.e}">${esc(EL_CHIP[e.id] || ELSHORT[e.id])}</button>`).join('')}</div>
+    <div class="chips" aria-label="Main races">${top.map(x => `<button type="button" class="chip" data-rc="${esc(x.id)}" aria-pressed="${x.id === state.res.c}">${esc(raceShort(x))}</button>`).join('')}</div>
+    <select id="raceSel" class="more" aria-label="Every race in this election (${n})">${raceOpts}</select>`;
 }
-function renderBrowser() {
-  const q = $('#browserQ').value.trim().toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
-  const fam = q ? null : state.bfam;
-  $('#fams').innerHTML = FAMS.map(f => `<button type="button" data-f="${f.k}" aria-selected="${!q && f.k === fam}">${esc(f.label)}<small>${esc(f.sub)}</small></button>`).join('');
-  $$('#fams [data-f]').forEach(b => b.addEventListener('click', () => { state.bfam = b.dataset.f; $('#browserQ').value = ''; renderBrowser(); }));
-  let head = '';
-  if (fam === 'elections') head = `<div class="chips" style="padding:2px 2px 6px">${ELX.map(e => `<button type="button" class="chip" data-bel="${e.id}" aria-pressed="${(state.bel || state.res.e) === e.id}">${esc(ELSHORT[e.id])}</button>`).join('')}</div>`;
-  if (fam === 'residents') head = `<button type="button" class="item" data-m="c:${KEY_SET[0]}"><b>Start with key numbers</b><span>Eligible voters, registration, race, income, poverty, renters, language and more</span></button>`;
-  const groups = browserItems(fam, q);
-  $('#items').innerHTML = head + (groups.length ? groups.map(([h, list]) => `<div class="ih">${esc(h)}</div>` + list.map(it => it.m ? `<button type="button" class="item" data-m="${esc(it.m)}" aria-current="${it.m === state.metric}"><b>${esc(it.label)}</b>${it.sub ? `<span>${esc(it.sub)}</span>` : ''}${it.when ? `<em>${esc(it.when)}</em>` : ''}</button>`
-    : `<button type="button" class="item" data-race="${esc(JSON.stringify(it.race))}" aria-current="${state.metric === 'r' && state.res.c === it.race[1] && state.res.e === it.race[0]}"><b>${esc(it.label)}</b><span>${esc(it.sub)}</span></button>`).join('')).join('') : '<p class="caption" style="padding:10px">Nothing matches. Try a candidate’s name, a group, or words like “evictions”, “renters”, “turnout”.</p>');
-  $$('#items [data-bel]').forEach(b => b.addEventListener('click', () => { state.bel = b.dataset.bel; renderBrowser(); }));
-  $$('#items [data-m]').forEach(b => b.addEventListener('click', () => { $('#browserDlg').close(); setMetric(b.dataset.m); }));
-  $$('#items [data-race]').forEach(b => b.addEventListener('click', () => { const [e, cid, cand] = JSON.parse(b.dataset.race); $('#browserDlg').close(); pickRace(e, cid, cand ? 'share' : 'lead', cand); }));
-}
-$('#browserQ').addEventListener('input', renderBrowser);
-$('#changeBtn').addEventListener('click', openBrowser);
+$('#topics').addEventListener('click', e => {
+  const b = e.target.closest('[data-fam]'); if (!b || b.dataset.fam === famOf(state.metric)) return;
+  $$('#topics [data-fam]').forEach(x => x.setAttribute('aria-selected', x === b));
+  setMetric(state.lastM[b.dataset.fam] || DEFAULT_OF[b.dataset.fam]);
+});
+$('#picks').addEventListener('click', e => {
+  const b = e.target.closest('[data-m]'); if (!b || b.dataset.m === state.metric) return;
+  $$('#picks [data-m]').forEach(x => x.setAttribute('aria-pressed', x === b));
+  setMetric(b.dataset.m);
+});
+$('#picks').addEventListener('change', async e => {
+  if (e.target.id === 'moreSel' && e.target.value) setMetric(e.target.value);
+  if (e.target.id === 'raceSel') { state.res.c = e.target.value; await ensureResults(); refreshMap(); renderSheet(); }
+});
+$('#picks').addEventListener('click', async e => {
+  const el = e.target.closest('[data-el]'), rc = e.target.closest('[data-rc]');
+  if (el && el.dataset.el !== state.res.e) {
+    $$('#picks [data-el]').forEach(x => x.setAttribute('aria-checked', x === el)); $('#layerTitle').textContent = 'Loading';
+    state.res.e = el.dataset.el; state.res.c = null; await ensureResults(); refreshMap(); renderSheet();
+  }
+  if (rc && rc.dataset.rc !== state.res.c) {
+    $$('#picks [data-rc]').forEach(x => x.setAttribute('aria-pressed', x === rc));
+    state.res.c = rc.dataset.rc; await ensureResults(); refreshMap(); renderSheet();
+  }
+});
 async function pickRace(eid, cid, view, cand) {
   state.res.e = eid; state.res.c = cid; state.res.v = view || 'lead'; if (cand) state.res.a = cand;
   const E = await loadElection(eid), c = E.byId.get(cid);
@@ -1169,7 +1185,7 @@ function welcomeHTML() {
     <div class="ways">
       <div class="way"><span class="ic">1</span><div><b>Search your address</b>Your poll site for November 3, your representatives, and your districts.</div></div>
       <div class="way"><span class="ic">2</span><div><b>Click any place on the map</b>Its profile opens here. Shift-click, or press “+ Compare”, to line places up side by side.</div></div>
-      <div class="way"><span class="ic">3</span><div><b>Change what the map shows</b>Party enrollment, any race from 2024 to 2026, census measures, homes, 311, evictions, crime, Council funding and donations.</div></div>
+      <div class="way"><span class="ic">3</span><div><b>Pick a topic in the card on the left</b>Voters, Elections, People, Homes, Neighborhood or Money, then any measure under it. One click each.</div></div>
     </div>
     <div class="sec"><h3>Try</h3><div class="chips">
       <button type="button" class="chip" data-try="cc:28">Council District 28</button>

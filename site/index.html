@@ -38,7 +38,8 @@
 
     <section class="card layer" id="layerCard" aria-label="What the map shows" tabindex="-1">
       <div class="layer-head">
-        <div class="row1"><span class="label" id="layerFam">Voters</span><button class="btn sm" id="changeBtn" type="button">Change what the map shows</button></div>
+        <div class="topics" id="topics" role="tablist" aria-label="Topic"></div>
+        <div class="picks" id="picks"></div>
         <h2 class="layer-title" id="layerTitle">Loading</h2>
         <label class="layer-by"><span>Shown by</span><select id="levelSel" aria-label="Show the city by"></select></label>
       </div>
@@ -65,17 +66,6 @@
   </main>
 </div>
 
-<dialog id="browserDlg" class="dlg wide" aria-labelledby="browserTitle">
-  <div class="dlg-head">
-    <h2 id="browserTitle">What should the map show?</h2>
-    <input id="browserQ" class="field" type="search" placeholder="Search measures and races" aria-label="Search measures and races" style="max-width:320px">
-    <button class="x" type="button" data-close aria-label="Close">×</button>
-  </div>
-  <div class="browser">
-    <nav class="fams" id="fams" aria-label="Kinds of data"></nav>
-    <div class="items" id="items"></div>
-  </div>
-</dialog>
 
 <dialog id="cmpDlg" class="dlg wide" aria-labelledby="cmpTitle">
   <div class="dlg-head">
