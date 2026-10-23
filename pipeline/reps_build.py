@@ -26,9 +26,16 @@ PARTY = {'D': 'Democrat', 'R': 'Republican', 'Democratic': 'Democrat', 'Democrat
 def lines_of(block):
     return [txt(x) for x in re.split(r'<br\s*/?>', block) if txt(x)]
 
+PHONE = re.compile(r'\(?(\d{3})\)?[\s.\-]*(\d{3})[\s.\-]+(\d{4})')
 def office_from(ls):
-    phone = next((re.search(r'\d{3}-\d{3}-\d{4}', l).group(0) for l in ls if re.search(r'\d{3}-\d{3}-\d{4}', l) and 'fax' not in l.lower()), '')
-    addr = [l for l in ls if not re.search(r'\d{3}-\d{3}-\d{4}|hours|appointment|^fax', l, re.I)]
+    """address lines and the main phone from a contact block; fax, email and hours lines are left out"""
+    phone = next((PHONE.search(l) for l in ls if PHONE.search(l) and 'fax' not in l.lower()), None)
+    phone = '-'.join(phone.groups()) if phone else ''
+    addr = [l for l in ls if not PHONE.search(l) and not re.search(r'hours|appointment|^fax|^e-?mail|@|^phone|contact (my|our|the) office', l, re.I)]
+    a0 = next((i for i, l in enumerate(addr) if re.match(r'^\d', l)), 0)      # starts at the street number
+    addr = addr[a0:]
+    z = next((i for i, l in enumerate(addr) if re.search(r'\b1\d{4}\b', l)), None)
+    if z is not None: addr = addr[:z + 1]          # the address ends at its ZIP code line
     return re.sub(r'\s*,(\s*,)+', ',', ', '.join(addr)).strip(' ,'), phone
 
 def council():

@@ -1,0 +1,35 @@
+# Weekly refresh of neighborhood conditions (311, housing violations, evictions, NYPD complaints) from NYC Open Data.
+# Pulls the latest 12 complete months for each source, checks every pull adds up to the API's own count,
+# and commits site/data/conditions.json only when it changed. Run it by hand from the Actions tab too.
+name: Refresh neighborhood conditions
+on:
+  schedule:
+    - cron: '17 9 * * 1'   # Mondays, 09:17 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: conditions
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pandas geopandas pyogrio pyarrow numpy
+      - name: Build conditions.json from the Open Data API
+        env:
+          SOCRATA_APP_TOKEN: ${{ secrets.SOCRATA_APP_TOKEN }}
+        run: python pipeline/conditions_build.py
+      - name: Commit if anything changed
+        run: |
+          git config user.name "conditions-bot"
+          git config user.email "conditions-bot@users.noreply.github.com"
+          git add site/data/conditions.json pipeline/ref/evict_geocode_cache.json
+          if git diff --cached --quiet; then echo "No change"; exit 0; fi
+          git commit -m "Refresh neighborhood conditions $(date -u +%Y-%m-%d)"
+          git push

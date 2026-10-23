@@ -33,12 +33,17 @@ def person(s):
     s = re.sub(r'\b(MR|MRS|MS|DR|HON)\.?\b', '', s.upper())
     return ' '.join(w.capitalize() for w in s.split())
 
+# ZIP codes whose census areas only clip the Queens line: nearly all their donors live in Nassau County (Floral Park,
+# Elmont, New Hyde Park), so a gift from one of them is not counted as coming from the city.
+MOSTLY_NASSAU = {'11001', '11003', '11040'}
+
 def zip_areas():
     g = gpd.read_file(f'{ROOT}/raw/zip/modzcta.geojson')
     g = g[g.modzcta != '99999'].copy()
     zmap = {}
     for r in g.itertuples():
-        for z in re.findall(r'\d{5}', f'{r.label},{r.zcta},{r.modzcta}'): zmap.setdefault(z, r.modzcta)
+        for z in re.findall(r'\d{5}', f'{r.label},{r.zcta},{r.modzcta}'):
+            if z not in MOSTLY_NASSAU: zmap.setdefault(z, r.modzcta)
     return g, zmap
 
 def main():

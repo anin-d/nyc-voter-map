@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Open NYC</title>
-<meta name="description" content="Voters, election results, residents, homes, neighborhood conditions and political money for every NYC election district, rolled up to Council, Assembly, Senate and Congressional lines. Map it, compare it, download it.">
+<meta name="description" content="Voters, election results, residents, homes, neighborhood conditions and political money for every NYC district. Search an address, click a district, compare places, download the numbers.">
 <meta property="og:title" content="Open NYC">
-<meta property="og:description" content="Every NYC district: who votes, how they voted, who lives there, who represents them, and where the money goes.">
+<meta property="og:description" content="Every NYC district in plain numbers: who votes, how they voted, who lives there, who represents them.">
 <meta name="theme-color" content="#14625f">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314625f'/%3E%3Cpath d='M8 23V9l8 9 8-9v14' stroke='white' stroke-width='3' fill='none' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,16 +16,13 @@
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<a class="skip" href="#panel">Skip to the controls</a>
+<a class="skip" href="#layerCard">Skip to the map controls</a>
 <div class="app">
   <header class="top">
-    <div class="brand">
-      <h1>Open NYC</h1>
-      <p>Every district in the city: who votes, how they voted, who lives there, who represents them.</p>
-    </div>
-    <div class="search" role="search">
-      <svg class="search-ico" viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Your address, a district like “Council 28”, or a ZIP code" aria-label="Search an address, district or ZIP code" aria-controls="qList" aria-expanded="false" role="combobox">
+    <div class="brand"><b>Open NYC</b><span>Every district, in plain numbers</span></div>
+    <div class="omni" role="search">
+      <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 13l4.5 4.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search an address, a district, a ZIP code, a person or a topic" aria-label="Search" aria-controls="qList" aria-expanded="false" role="combobox" aria-autocomplete="list">
       <ul id="qList" class="suggest" role="listbox" hidden></ul>
     </div>
     <div class="top-actions">
@@ -34,170 +31,61 @@
     </div>
   </header>
 
-  <aside class="panel" id="panel" tabindex="-1">
-    <div id="addrCard" class="addr-slot" hidden></div>
-    <section class="step">
-      <h2><span class="num">1</span>Show the city by</h2>
-      <div class="seg seg-3" id="levelSeg" role="radiogroup" aria-label="District type">
-        <button type="button" role="radio" data-l="cc">City Council</button>
-        <button type="button" role="radio" data-l="ad">State Assembly</button>
-        <button type="button" role="radio" data-l="sd">State Senate</button>
-        <button type="button" role="radio" data-l="cd">Congress</button>
-        <button type="button" role="radio" data-l="ed">Election district</button>
-        <button type="button" role="radio" data-l="tract">Census tract</button>
-        <button type="button" role="radio" data-l="boro">Borough</button>
-        <button type="button" role="radio" data-l="zip">ZIP code</button>
-      </div>
-      <p class="caption" id="levelCaption"></p>
-    </section>
-
-    <section class="step">
-      <h2><span class="num">2</span>Color the map by</h2>
-      <div class="layer-search">
-        <input id="layerQ" type="search" autocomplete="off" spellcheck="false" placeholder="Find anything: “Mamdani”, “evictions”, “Bengali”, “doors”" aria-label="Find a map layer" aria-controls="layerList" aria-expanded="false" role="combobox">
-        <ul id="layerList" class="suggest" role="listbox" hidden></ul>
-      </div>
-      <div class="tabs tabs-6" id="colorTabs" role="tablist" aria-label="Kind of data">
-        <button type="button" role="tab" id="tab-voters" data-t="voters" aria-controls="voterPanel">Voters</button>
-        <button type="button" role="tab" id="tab-elections" data-t="elections" aria-controls="elecPanel">Elections</button>
-        <button type="button" role="tab" id="tab-residents" data-t="residents" aria-controls="resPanel">Residents</button>
-        <button type="button" role="tab" id="tab-field" data-t="field" aria-controls="fieldPanel">Homes</button>
-        <button type="button" role="tab" id="tab-conditions" data-t="conditions" aria-controls="condPanel">Conditions</button>
-        <button type="button" role="tab" id="tab-money" data-t="money" aria-controls="moneyPanel">Money</button>
-      </div>
-
-      <div id="voterPanel" role="tabpanel" aria-labelledby="tab-voters" class="tabpanel">
-        <div class="metrics" id="metricGrid" role="radiogroup" aria-label="Map color"></div>
-        <div class="row-between">
-          <div class="seg seg-inline" id="statusSeg" role="radiogroup" aria-label="Which voters">
-            <button type="button" role="radio" data-s="0">All voters</button>
-            <button type="button" role="radio" data-s="1">Active</button>
-            <button type="button" role="radio" data-s="2">Inactive</button>
-          </div>
-          <button type="button" class="linkish" id="statusHelpBtn" aria-expanded="false" aria-controls="statusHelp">What’s inactive?</button>
-        </div>
-        <p class="caption" id="statusHelp" hidden>Inactive voters are still registered and can still vote. The Board of Elections marks a voter inactive when mail sent to their address comes back or records show they may have moved. Voting or updating their registration makes them active again.</p>
-        <p class="caption src">NYS Board of Elections, registered voters as of February 20, 2026.</p>
-      </div>
-
-      <div id="elecPanel" role="tabpanel" aria-labelledby="tab-elections" class="tabpanel" hidden>
-        <div class="seg seg-2" id="elecSeg" role="radiogroup" aria-label="Election"></div>
-        <div class="fieldset">
-          <label class="field-label" for="contestSel">Race</label>
-          <select id="contestSel"></select>
-        </div>
-        <div class="seg seg-views" id="viewSeg" role="radiogroup" aria-label="What to show"></div>
-        <div id="viewOpts" class="grid2"></div>
-        <div id="roundSeg" class="seg seg-inline" role="radiogroup" aria-label="Ranked-choice round" hidden>
-          <button type="button" role="radio" data-r="1">First choices</button>
-          <button type="button" role="radio" data-r="final">Final round</button>
-        </div>
-        <div id="contestSum" class="contest-sum" aria-live="polite"></div>
-        <p class="note" id="elecNote" hidden></p>
-        <div class="row"><button type="button" class="btn" id="resDl">Download these results</button></div>
-        <p class="caption src">Certified results, NYC Board of Elections. Ranked-choice rounds counted from the Board’s cast vote records and checked against its certified reports.</p>
-      </div>
-
-      <div id="resPanel" role="tabpanel" aria-labelledby="tab-residents" class="tabpanel" hidden>
-        <div class="cats" id="catRow" role="group" aria-label="Topic"></div>
-        <div class="cmetrics" id="cMetricList" role="radiogroup" aria-label="Census measure"></div>
-        <p class="caption" id="cDesc"></p>
-        <p class="note" id="resNote" hidden></p>
-        <label class="chk"><input type="checkbox" id="fadeLow" checked> Fade areas where the number has low reliability</label>
-        <p class="caption src">U.S. Census Bureau: American Community Survey 2020–2024, and the official citizen voting-age population tabulation. Split into districts by 2020 Census blocks.</p>
-      </div>
-
-      <div id="fieldPanel" role="tabpanel" aria-labelledby="tab-field" class="tabpanel" hidden>
-        <div class="cmetrics" id="fieldList" role="radiogroup" aria-label="Homes measure"></div>
-        <p class="caption" id="fieldDesc"></p>
-        <p class="caption src">NYC Department of City Planning PLUTO 26v2 tax lots. Complexes split across their buildings by footprint. Hotels, nursing homes, shelters and dorms left out.</p>
-      </div>
-
-      <div id="condPanel" role="tabpanel" aria-labelledby="tab-conditions" class="tabpanel" hidden>
-        <div class="seg seg-inline" id="cmodeSeg" role="radiogroup" aria-label="Count or rate">
-          <button type="button" role="radio" data-c="rate">Rate</button>
-          <button type="button" role="radio" data-c="count">Count</button>
-        </div>
-        <div class="cmetrics" id="condList" role="radiogroup" aria-label="Condition"></div>
-        <p class="caption" id="condDesc"></p>
-        <p class="caption src" id="condSrc"></p>
-      </div>
-
-      <div id="moneyPanel" role="tabpanel" aria-labelledby="tab-money" class="tabpanel" hidden>
-        <div class="cmetrics" id="moneyList" role="radiogroup" aria-label="Money measure"></div>
-        <p class="caption" id="moneyDesc"></p>
-        <p class="caption src" id="moneySrc"></p>
-      </div>
-
-      <div class="avail note" id="availNote" hidden></div>
-
-      <div class="lines">
-        <span class="lines-label">Draw on the map</span>
-        <div class="toggles" id="lineToggles"></div>
-      </div>
-    </section>
-
-    <section class="step" id="selStep">
-      <div class="row-between">
-        <h2><span class="num">3</span>Pick places to explore and compare</h2>
-        <span class="count-pill" id="selCount" hidden></span>
-      </div>
-      <div id="selBody"></div>
-      <details class="more" id="moreSel">
-        <summary>More ways to pick</summary>
-        <div class="more-body">
-          <label class="field-label" for="addBox">Type district numbers</label>
-          <div class="row">
-            <input type="text" id="addBox" autocomplete="off">
-            <button class="btn" id="addBtn" type="button">Add</button>
-          </div>
-          <p class="caption">Separate with commas. Ranges work too, like 23001-23010.</p>
-          <div id="edFilter">
-            <label class="field-label">Election districts inside a combination</label>
-            <div class="grid2">
-              <select id="f-cc" aria-label="City Council district"></select>
-              <select id="f-ad" aria-label="State Assembly district"></select>
-              <select id="f-sd" aria-label="State Senate district"></select>
-              <select id="f-cd" aria-label="Congressional district"></select>
-            </div>
-            <button class="btn" id="filterBtn" type="button">Pick matching election districts</button>
-          </div>
-          <p class="caption">On a computer, hold <kbd>Shift</kbd> and drag on the map to pick everything inside a box.</p>
-          <p class="msg" id="addMsg" role="status"></p>
-        </div>
-      </details>
-    </section>
-
-    <footer class="panel-foot">
-      <a href="downloads/nyc_city_open_data_feb2026.zip" download>Full dataset (CSV)</a>
-      <a href="downloads/nyc_voter_enrollment_feb2026.sqlite" download>Database (SQLite)</a>
-      <button type="button" class="linkish" id="aboutBtn2">Sources and method</button>
-    </footer>
-  </aside>
-
-  <main class="mapwrap">
+  <main class="stage">
     <div id="map" aria-label="Map of New York City"></div>
-    <div class="loading" id="loading">Loading 4,214 election districts…</div>
-    <div class="tray" id="tray" hidden>
-      <span id="trayText"></span>
-      <div class="tray-actions">
-        <button class="btn primary" id="trayCompare" type="button">Compare in a table</button>
-        <button class="btn" id="trayDownload" type="button">Download</button>
-        <button class="btn ghost" id="trayClear" type="button">Clear</button>
+    <div class="loading" id="loading">Loading the map</div>
+    <div class="tip" id="tip" hidden></div>
+
+    <section class="card layer" id="layerCard" aria-label="What the map shows" tabindex="-1">
+      <div class="layer-head">
+        <div class="row1"><span class="label" id="layerFam">Voters</span><button class="btn sm" id="changeBtn" type="button">Change what the map shows</button></div>
+        <h2 class="layer-title" id="layerTitle">Loading</h2>
+        <label class="layer-by"><span>Shown by</span><select id="levelSel" aria-label="Show the city by"></select></label>
       </div>
-    </div>
+      <div class="layer-body">
+        <div id="layerControls" class="grid1"></div>
+        <div id="unavail" class="unavail" hidden></div>
+        <div class="legend" id="legend" aria-label="Legend"></div>
+        <p class="caption" id="layerDesc"></p>
+        <p class="src" id="layerSrc"></p>
+      </div>
+      <div class="layer-foot">
+        <details id="mapExtras"><summary>Lines and poll sites</summary><div><div class="chips" id="lineToggles"></div></div></details>
+      </div>
+    </section>
+
+    <section class="card sheet" id="sheet" aria-label="Place details">
+      <div id="addrBlock" hidden></div>
+      <div class="sheet-head" id="sheetHead"></div>
+      <div class="tabs" id="sheetTabs" role="tablist" aria-label="Topics" hidden></div>
+      <div class="sheet-body" id="sheetBody"></div>
+    </section>
+
+    <div class="tray" id="tray" hidden></div>
   </main>
 </div>
+
+<dialog id="browserDlg" class="dlg wide" aria-labelledby="browserTitle">
+  <div class="dlg-head">
+    <h2 id="browserTitle">What should the map show?</h2>
+    <input id="browserQ" class="field" type="search" placeholder="Search measures and races" aria-label="Search measures and races" style="max-width:320px">
+    <button class="x" type="button" data-close aria-label="Close">×</button>
+  </div>
+  <div class="browser">
+    <nav class="fams" id="fams" aria-label="Kinds of data"></nav>
+    <div class="items" id="items"></div>
+  </div>
+</dialog>
 
 <dialog id="cmpDlg" class="dlg wide" aria-labelledby="cmpTitle">
   <div class="dlg-head">
     <h2 id="cmpTitle">Comparison</h2>
-    <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    <button class="x" type="button" data-close aria-label="Close">×</button>
   </div>
   <div class="dlg-body" id="cmpBody"></div>
   <div class="dlg-foot">
     <span class="caption" id="cmpNote"></span>
-    <div class="row">
+    <div class="chips">
       <button class="btn primary" id="exCmp" type="button">Download this table</button>
       <button class="btn" id="exEds" type="button">Download election districts inside</button>
       <button class="btn" id="exAll" type="button">Download every district</button>
@@ -208,10 +96,10 @@
 <dialog id="listDlg" class="dlg wide" aria-labelledby="listTitle">
   <div class="dlg-head">
     <h2 id="listTitle">List</h2>
-    <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    <button class="x" type="button" data-close aria-label="Close">×</button>
   </div>
   <div class="dlg-body">
-    <input type="search" id="listQ" class="list-q" placeholder="Filter this list" aria-label="Filter this list">
+    <input type="search" id="listQ" class="field" placeholder="Filter this list" aria-label="Filter this list" style="margin-bottom:10px">
     <div id="listBody"></div>
   </div>
   <div class="dlg-foot">
@@ -223,60 +111,52 @@
 <dialog id="aboutDlg" class="dlg" aria-labelledby="aboutTitle">
   <div class="dlg-head">
     <h2 id="aboutTitle">About the data</h2>
-    <button class="icon-btn" type="button" data-close aria-label="Close">×</button>
+    <button class="x" type="button" data-close aria-label="Close">×</button>
   </div>
   <div class="dlg-body prose">
     <h3>What you’re looking at</h3>
-    <p>Every registered voter in New York City belongs to one election district, a small area of a few hundred to a couple thousand voters. Election districts fit exactly inside City Council, State Assembly, State Senate and Congressional districts, so this site adds them up into each kind of district. Everything here can be mapped, picked, compared and downloaded.</p>
+    <p>Every registered voter in New York City belongs to one election district, a small area of a few hundred to a couple thousand voters. Election districts fit exactly inside City Council, State Assembly, State Senate and Congressional districts, so this site adds them up into each kind of district. Search an address, click any place, compare places side by side, and download the numbers.</p>
 
     <h3>Sources</h3>
     <ul>
       <li><b>Voters:</b> NYS Board of Elections, enrollment by election district, party and status, as of February 20, 2026. 5,359,346 voters.</li>
       <li><b>Election results:</b> NYC Board of Elections certified results by election district for the November 2024 general, June 2025 primary, November 2025 general and June 2026 primary. Ranked-choice rounds for the June 2025 primary come from the Board’s cast vote records.</li>
-      <li><b>Residents:</b> U.S. Census Bureau, American Community Survey 2020–2024 5-year estimates by census tract, and the Bureau’s citizen voting-age population special tabulation (2020–2024) by block group.</li>
+      <li><b>Residents:</b> U.S. Census Bureau, American Community Survey 2020 to 2024 5-year estimates by census tract, and the Bureau’s citizen voting-age population special tabulation (2020 to 2024) by block group.</li>
       <li><b>Homes:</b> NYC Department of City Planning, PLUTO 26v2 tax lots; NYC Open Data building footprints; NYCHA development boundaries and Development Data Book.</li>
-      <li><b>Conditions:</b> NYC Open Data: 311 service requests, HPD housing maintenance code violations, marshals’ evictions, and NYPD complaint data (historic and year to date).</li>
+      <li><b>Neighborhood conditions:</b> pulled from NYC Open Data’s API each week: 311 service requests, HPD housing code violations, marshals’ evictions and NYPD complaints. <span id="condWindows"></span></li>
       <li><b>Representatives:</b> council.nyc.gov, nyassembly.gov, nysenate.gov and the Clerk of the U.S. House, checked against certified winners and OpenStates.</li>
       <li><b>Poll sites:</b> NYC Board of Elections poll site lists for the November 3, 2026 general election.</li>
-      <li><b>Money:</b> NYC Council expense funding disclosure for fiscal year 2027; NYC Campaign Finance Board 2025 contributions; Federal Election Commission bulk individual contributions for 2025–2026.</li>
-      <li><b>Lines:</b> NYC Department of City Planning election district releases (24c through 26c) and district lines. <b>Address search:</b> NYC Planning Labs GeoSearch. <b>Basemap:</b> Esri.</li>
+      <li><b>Money:</b> NYC Council expense funding disclosure for fiscal year 2027; NYC Campaign Finance Board 2025 contributions; Federal Election Commission individual contributions for 2025 to 2026.</li>
+      <li><b>Lines:</b> NYC Department of City Planning election district releases and district lines. <b>Address search:</b> NYC Planning Labs GeoSearch. <b>Basemap:</b> Esri.</li>
     </ul>
 
     <h3>Election results</h3>
-    <p>Each election is shown on the election district lines in force on its election day. The June 2026 primary used the same lines as this map. Earlier elections used older lines, so when you view them by election district the map switches to those lines and picking is turned off. Council, Assembly, Senate and Congressional lines did not change across these elections, so district totals line up with the rest of the site.</p>
-    <p>A candidate who ran on more than one party line has those lines added together. When the Board combined small election districts for an election, the votes are reported under the host district and the others show the host’s numbers. Turnout compares ballots cast with the February 2026 voter roll, so it is only shown where the two line up in time and place: the June 2026 primary everywhere, and the November 2025 general for whole districts.</p>
-    <p>Checks: every district total matches the Board’s certified recaps (27,335 Assembly-level and 14,873 county-level comparisons, no differences), and every ballot in a district race sits inside the district the Board assigned it to. The ranked-choice count reproduces the Board’s certified final round exactly for 37 of 38 contests; the Republican primary in Council District 47 was certified by hand count and is left out.</p>
+    <p>Each election is shown on the election district lines in force on its election day. The June 2026 primary used the same lines as this map. Earlier elections used older lines, so when you view them by election district the map switches to those lines. Council, Assembly, Senate and Congressional lines did not change across these elections, so district totals line up with the rest of the site.</p>
+    <p>A candidate who ran on more than one party line has those lines added together. When the Board counted small election districts together with a neighbor, the votes are reported under the host district. Turnout compares ballots with the February 2026 voter roll, so it is only shown where the two line up in time and place: the June 2026 primary everywhere, and the November 2025 general for whole districts.</p>
+    <p>Checks: every district total matches the Board’s certified recaps, and every ballot in a district race sits in the district the Board assigned it to. The ranked-choice count reproduces the Board’s certified final round exactly for 37 of 38 contests; the Republican primary in Council District 47 was certified by hand count and is left out.</p>
 
-    <h3>Who lives here: Census data</h3>
-    <p>Tracts and election districts don’t line up, so each tract is split using 2020 Census blocks. A block’s residents go to the election district its center falls in. Eligible voters come from the Bureau’s official citizen voting-age tabulation, split the same way from block groups. Districts are the sum of their election districts.</p>
-    <p>Every census number has a 90% margin of error, shown as ± in tables and downloads, and a reliability rating: high when the coefficient of variation is under 15%, medium from 15% to 30% or when most residents come from split tracts, low above 30%. Low numbers are faded on the map.</p>
-    <p>Checks: tract totals equal the Bureau’s county figures; our Senate, Assembly and Congressional estimates match the Bureau’s own published district estimates (population within 2.5%, eligible voters within 1.5%); the website’s math is tested against an independent build with zero differences.</p>
+    <h3>Who lives here</h3>
+    <p>Tracts and election districts don’t line up, so each tract is split using 2020 Census blocks: a block’s residents go to the election district its center falls in. Eligible voters come from the Bureau’s official citizen voting-age tabulation, split the same way from block groups. Districts are the sum of their election districts.</p>
+    <p>Every census number has a 90% margin of error, shown as ± in tables and downloads, and a reliability rating: high when the coefficient of variation is under 15%, medium from 15% to 30% or when most residents come from split tracts, low above 30%. Low numbers are marked and faded on the map.</p>
 
     <h3>Homes</h3>
-    <p>“Homes” counts residential units in PLUTO, the city’s tax lot file. Each lot is placed at its point on the map. Lots with several buildings, like Co-op City or Stuyvesant Town, are split across their buildings by footprint area times height. NYCHA developments are pooled and spread across every NYCHA building in the development, because PLUTO sometimes books a whole development on one lot. Four NYCHA lots with impossible counts (under 250 square feet per unit) use NYCHA’s own apartment count. Hotels, hospitals and nursing homes, shelters and dorms are left out because they are not homes. Every unit is placed. Totals track the 2020 Census closely (median election district within 2%), and the larger gaps are buildings finished since 2020.</p>
+    <p>Homes are residential units in PLUTO, the city’s tax lot file. Lots with several buildings, like Co-op City, are split across their buildings by footprint area times height. NYCHA developments are pooled and spread across every NYCHA building in the development, because PLUTO sometimes books a whole development on one lot; four NYCHA lots with impossible counts use NYCHA’s own apartment count. Hotels, hospitals and nursing homes, shelters and dorms are left out because they are not homes.</p>
 
-    <h3>Conditions</h3>
-    <p>All conditions cover the same twelve months, July 1, 2025 to June 30, 2026, because NYPD’s latest release ends June 30. Each record is placed by its location. NYPD records sit on street centerlines and corners, and election district lines run down streets, so a record within 25 feet of a line is shared equally among the districts there. Rates use 2020 Census counts: residents for 311 and crime, homes for housing violations and evictions. Places with few residents, like Midtown, show very high rates per resident.</p>
+    <h3>Neighborhood conditions</h3>
+    <p>Each source covers its latest 12 complete months, so the windows can differ by source. A record with a tax lot is placed in the election district that holds the lot. Other records use their map point; NYPD points sit on street centerlines and corners, and election district lines run down streets, so a point within 25 feet of a line is shared equally among the districts there. Evictions without a location are placed by address when the house number, street, borough and ZIP code all match. Rates use 2020 Census counts: residents for 311 and crime, homes for housing violations and evictions. Places with few residents, like Midtown, show very high rates per resident.</p>
 
     <h3>Representatives and poll sites</h3>
-    <p>Representatives come from each body’s official roster and are checked two ways: against the winners in our certified results and against OpenStates. Where they differ, the seat changed hands after that election (Council District 3, Senate Districts 22 and 47) or is vacant (Senate District 12, since August 2026). Poll sites are the Board’s lists for November 3, 2026. The Board created 71 new election districts for that election that are not on any city map yet; if your Assembly district is flagged, confirm your site at <a href="https://findmypollsite.vote.nyc/" target="_blank" rel="noopener">findmypollsite.vote.nyc</a>.</p>
+    <p>Representatives come from each body’s official roster and are checked against the winners in our certified results and against OpenStates. Where they differ, the seat changed hands after that election (Council District 3, Senate Districts 22 and 47) or is vacant (Senate District 12, since August 2026). Poll sites are the Board’s lists for November 3, 2026. The Board created 71 new election districts for that election that are not on any city map yet; if your Assembly district is flagged, confirm your site at <a href="https://findmypollsite.vote.nyc/" target="_blank" rel="noopener">findmypollsite.vote.nyc</a>.</p>
 
     <h3>Money</h3>
-    <p>Council discretionary funding is every designation in the Council’s fiscal year 2027 disclosure, credited to the sponsoring member’s district. Speaker’s initiatives, borough delegations and citywide initiatives are kept separate. Donations are by the donor’s ZIP code, using the health department’s ZIP areas, which group a few small ZIP codes. City races are net of refunds. Federal totals count each gift once, under the committee that received it, including gifts made through ActBlue and WinRed. The FEC only lists donors who give a committee more than $200 in the cycle.</p>
+    <p>Council discretionary funding is every designation in the Council’s fiscal year 2027 disclosure, credited to the sponsoring member’s district. Speaker’s initiatives, borough delegations and citywide initiatives are kept separate. Donations are by the donor’s ZIP code, using the health department’s ZIP areas. City races are net of refunds. Federal totals count each gift once, under the committee that received it, including gifts made through ActBlue and WinRed. The FEC only lists donors who give a committee more than $200 in the cycle.</p>
 
     <h3>Districts that cross the city line</h3>
     <p>Four districts include voters outside the city, and this site only counts the NYC part:</p>
     <ul id="reachList"></ul>
 
-    <h3>Things to know</h3>
-    <ul>
-      <li><b>Party names:</b> “No party” means voters not enrolled in any party. “Other parties” combines every party besides Democratic, Republican, Conservative and Working Families.</li>
-      <li><b>Address search</b> uses simplified lines. For an address right on a line, confirm with the city’s <a href="https://findmypollsite.vote.nyc/" target="_blank" rel="noopener">poll site locator</a>.</li>
-      <li>Election district 40047 in Queens (1 voter) has no published boundary. It counts toward Assembly 40 and Queens only.</li>
-      <li>188 mapped election districts have no registered voters. They are parks, airports and similar areas, shown in gray.</li>
-    </ul>
     <h3>Download everything</h3>
-    <p><a href="downloads/nyc_city_open_data_feb2026.zip" download>CSV bundle</a> (one file per district type, plus a README) or the <a href="downloads/nyc_voter_enrollment_feb2026.sqlite" download>SQLite database</a>.</p>
+    <p id="dlEverything"><a href="downloads/open_nyc_data_csv.zip" download>CSV bundle</a> (8 MB: every table, a README and the audit report) or the <a href="downloads/open_nyc_data.sqlite" download>SQLite database</a> (34 MB, the same tables, ready for SQL).</p>
   </div>
 </dialog>
 

@@ -1,10 +1,12 @@
 {
   "name": "nyc-voter-map",
   "private": true,
-  "description": "Who votes and who lives in every NYC district: voter enrollment and Census data by election district, council, assembly, senate and congressional lines.",
+  "description": "Every NYC district in plain numbers: voters, election results, residents, homes, neighborhood conditions, representatives and political money.",
   "scripts": {
     "test": "node tests/consistency.test.js && node tests/lookup.test.js",
-    "serve": "python3 -m http.server 8000 --directory site"
+    "serve": "python3 -m http.server 8000 --directory site",
+    "test:site": "node tests/site_check.js",
+    "audit": "python3 pipeline/audit_v4.py"
   },
   "devDependencies": {
     "mapshaper": "0.6.121",

@@ -79,6 +79,17 @@ Source files are not in git. Put them under `raw/`:
 
 Then `npm install` and `bash pipeline/run_all.sh`. Python needs pandas, geopandas, pyogrio, shapely and openpyxl.
 
+### Neighborhood conditions update themselves
+
+`pipeline/conditions_build.py` needs no downloads. It asks NYC Open Data's API how current each source is, takes the
+latest 12 complete months of 311 requests, HPD violations, residential evictions and NYPD complaints, and places each
+record in an election district (by tax lot where the record has one, otherwise by its coordinates). Every monthly pull
+must add up to the API's own count, and a run that finds under 60% of the last run's records stops without writing.
+
+`.github/workflows/conditions.yml` runs it every Monday on the default branch and commits `site/data/conditions.json`
+when it changes. Add a `SOCRATA_APP_TOKEN` repository secret to raise the API's rate limit (optional). The lookup files
+in `pipeline/ref/` only need rebuilding (`pipeline/conditions_ref.py`) when the ED lines or PLUTO change.
+
 ## Run the site locally
 
 `npm run serve`, then open http://localhost:8000.
