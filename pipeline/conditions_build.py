@@ -91,15 +91,24 @@ def pull(part, a, b, cache):
     def one(win):
         lo, hi = max(win[0], a), min(win[1], b + dt.timedelta(days=1))
         where = f"{col} >= '{lo}T00:00:00' and {col} < '{hi}T00:00:00'{part['extra']}"
-        rows, off, page = [], 0, 50000
-        while True:
-            d = get(part['id'], {'$select': part['select'] + ', count(*) as n', '$where': where, '$group': part['group'], '$order': part['group'], '$limit': page, '$offset': off})
-            rows += d; off += page
-            if len(d) < page: break
-        tot = int(get(part['id'], {'$select': 'count(*) as n', '$where': where})[0]['n'])
-        got = sum(int(r['n']) for r in rows)
-        assert got == tot, f"{part['id']} {lo}..{hi}: grouped rows add to {got}, API count is {tot}"
-        return rows, tot
+        count = lambda: int(get(part['id'], {'$select': 'count(*) as n', '$where': where})[0]['n'])
+        # The city adds and edits records while we read, so the count can move between our two requests.
+        # Count before and after the grouped pull: if the grouped rows match either count, they are a true
+        # snapshot of the data at that moment. If they match neither, try again; fail only if it never settles.
+        for attempt in range(5):
+            before = count()
+            rows, off, page = [], 0, 50000
+            while True:
+                d = get(part['id'], {'$select': part['select'] + ', count(*) as n', '$where': where, '$group': part['group'], '$order': part['group'], '$limit': page, '$offset': off})
+                rows += d; off += page
+                if len(d) < page: break
+            after = count()
+            got = sum(int(r['n']) for r in rows)
+            if got in (before, after):
+                if before != after: print(f"  {part['id']} {lo}..{hi}: data changed during the pull ({before} -> {after}); using the snapshot of {got}")
+                return rows, got
+            time.sleep(10 * (attempt + 1))
+        raise AssertionError(f"{part['id']} {lo}..{hi}: grouped rows add to {got}, API count was {before} then {after}, after 5 tries")
     with ThreadPoolExecutor(6) as ex:
         res = list(ex.map(one, months(a, b)))
     df = pd.DataFrame([r for rows, _ in res for r in rows])
