@@ -2,7 +2,7 @@
 
 Every New York City district, for people with no data background: who votes, how they voted, who lives there, who represents them, what their homes and blocks are like, and where the political money goes. Pick a district type, color the map, click places to see their full profile, compare them side by side, and download the numbers. Search an address to get your districts, representatives and poll site.
 
-Live site: https://nyc-voter-map.netlify.app
+Live site: https://opennyc.us
 
 ## What's in it
 
